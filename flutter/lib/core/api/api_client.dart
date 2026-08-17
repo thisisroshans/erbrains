@@ -9,9 +9,10 @@ import 'api_exception.dart';
 /// endpoint in its README — see [C:\erbrains\api\README.md] for the
 /// authoritative contract.
 ///
-/// NB: the backend does not currently verify the bearer token on any
-/// route (no auth middleware) — see docs/API_GAPS.md. It's still attached
-/// here so wiring real verification later is a backend-only change.
+/// Every route except `login` and the two product GETs requires the
+/// bearer token attached below (see api/middleware/auth.js) — the server
+/// verifies it's well-formed and that its userId matches whatever userId
+/// the request acts on.
 class ApiClient {
   ApiClient({TokenStorage? tokenStorage})
       : _tokenStorage = tokenStorage ?? TokenStorage(),
@@ -58,11 +59,16 @@ class ApiClient {
   Future<Map<String, dynamic>> login({
     required String email,
     required String password,
+    String? name,
   }) {
     return _wrap(
       () => _dio.post(
         '/auth/login',
-        data: {'email': email, 'password': password},
+        data: {
+          'email': email,
+          'password': password,
+          if (name != null) 'name': name,
+        },
       ),
       (data) => data as Map<String, dynamic>,
     );
@@ -173,6 +179,25 @@ class ApiClient {
     return _wrap(
       () => _dio.get('/cart', queryParameters: {'userId': userId}),
       (data) => data as Map<String, dynamic>,
+    );
+  }
+
+  /// Sets a line item to an exact quantity — the decrement counterpart to
+  /// [addToCart]'s increment-only upsert.
+  Future<Map<String, dynamic>> updateCartItemQuantity({
+    required String cartItemId,
+    required int quantity,
+  }) {
+    return _wrap(
+      () => _dio.patch('/cart/$cartItemId', data: {'quantity': quantity}),
+      (data) => data as Map<String, dynamic>,
+    );
+  }
+
+  Future<void> removeCartItem({required String cartItemId}) {
+    return _wrap<void>(
+      () => _dio.delete('/cart/$cartItemId'),
+      (data) {},
     );
   }
 

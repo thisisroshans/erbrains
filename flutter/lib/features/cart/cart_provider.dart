@@ -29,14 +29,38 @@ class Cart extends _$Cart {
     }
   }
 
-  /// Adds [quantity] more of [productId]. The backend upserts via
-  /// `ON CONFLICT` — there's no "set exact quantity" or "remove item"
-  /// endpoint yet, so per-line +/- steppers on the Cart screen itself are
-  /// UI-only until that lands. See docs/API_GAPS.md.
+  /// Adds [quantity] more of [productId] (or creates the line item on
+  /// first add) via the increment-only upsert `POST /cart`.
   Future<bool> addToCart({required String productId, required int quantity}) async {
     try {
       final api = ref.read(apiClientProvider);
       await api.addToCart(userId: userId, productId: productId, quantity: quantity);
+      await refresh();
+      return true;
+    } on ApiException catch (e) {
+      state = state.copyWith(error: e.message);
+      return false;
+    }
+  }
+
+  /// Sets a line item to an exact quantity via `PATCH /cart/:id`.
+  Future<bool> setQuantity({required String cartItemId, required int quantity}) async {
+    try {
+      final api = ref.read(apiClientProvider);
+      await api.updateCartItemQuantity(cartItemId: cartItemId, quantity: quantity);
+      await refresh();
+      return true;
+    } on ApiException catch (e) {
+      state = state.copyWith(error: e.message);
+      return false;
+    }
+  }
+
+  /// Removes a line item entirely via `DELETE /cart/:id`.
+  Future<bool> removeItem(String cartItemId) async {
+    try {
+      final api = ref.read(apiClientProvider);
+      await api.removeCartItem(cartItemId: cartItemId);
       await refresh();
       return true;
     } on ApiException catch (e) {

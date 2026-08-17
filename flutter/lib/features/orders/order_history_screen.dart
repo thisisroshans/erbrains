@@ -8,11 +8,11 @@ import 'orders_providers.dart';
 
 /// Screen 10 · Order history.
 ///
-/// `GET /orders` doesn't return an item count or a shipped/delivered
-/// lifecycle — every order is created as `status: 'completed'` and never
-/// transitions (matches the PDF's scope: no real fulfillment pipeline).
-/// The mock screens show Shipped/Processing variants; this only renders
-/// what the backend actually reports. See docs/API_GAPS.md.
+/// There's no shipped/delivered lifecycle on the backend — every order is
+/// created as `status: 'completed'` and never transitions (matches the
+/// PDF's scope: no real fulfillment pipeline). The mock screens show
+/// Shipped/Processing variants; this only renders what the backend
+/// actually reports.
 class OrderHistoryScreen extends ConsumerWidget {
   const OrderHistoryScreen({super.key, required this.userId});
 
@@ -59,7 +59,7 @@ class _OrderCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dateLabel = DateFormat('MMM d').format(order.createdAt);
-    final itemsLabel = order.itemCount != null ? '${order.itemCount} items · ' : '';
+    final itemsLabel = '${order.itemCount} item${order.itemCount == 1 ? '' : 's'} · ';
 
     return NocturneCard(
       child: Column(

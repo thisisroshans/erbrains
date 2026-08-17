@@ -14,9 +14,10 @@ class Product {
   final double price;
   final int stock;
 
-  /// The backend's `products` table has no image column today — see
-  /// docs/API_GAPS.md. Always null until that lands; screens fall back to
-  /// a placeholder tile (matching the design's `image-slot` placeholders).
+  /// Currently seeded with placeholder images (placehold.co) rather than
+  /// real product photography — see database/seed.sql. Screens fall back
+  /// to a plain tile (matching the design's `image-slot` placeholders)
+  /// whenever this is null or fails to load.
   final String? imageUrl;
 
   factory Product.fromJson(Map<String, dynamic> json) {

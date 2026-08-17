@@ -92,7 +92,7 @@ class _ProductTile extends ConsumerWidget {
         spacing: 8,
         children: [
           Expanded(
-            child: ProductImagePlaceholder(label: product.name),
+            child: ProductImagePlaceholder(label: product.name, imageUrl: product.imageUrl),
           ),
           Text(
             product.name,

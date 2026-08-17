@@ -422,7 +422,7 @@ app.get('/cart', async (req, res) => {
 
     try {
         const result = await db.query(
-            `SELECT c.id AS cart_item_id, c.quantity, p.id AS product_id, p.name, p.price,
+            `SELECT c.id AS cart_item_id, c.quantity, p.id AS product_id, p.name, p.price, p.image_url,
              (c.quantity * p.price) AS subtotal
              FROM cart_items c
              JOIN products p ON c.product_id = p.id

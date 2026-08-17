@@ -76,11 +76,18 @@ class _CartLine extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final notifier = ref.read(cartProvider(userId).notifier);
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       spacing: 10,
       children: [
-        ProductImagePlaceholder(label: item.name, height: 60, borderRadius: 8),
+        ProductImagePlaceholder(
+          label: item.name,
+          imageUrl: item.imageUrl,
+          height: 60,
+          borderRadius: 8,
+        ),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -91,18 +98,14 @@ class _CartLine extends ConsumerWidget {
               NocturneStepper(
                 value: item.quantity,
                 size: 22,
-                onIncrement: () => ref
-                    .read(cartProvider(userId).notifier)
-                    .addToCart(productId: item.productId, quantity: 1),
-                // The backend has no decrement/remove endpoint yet (only an
-                // upsert-and-increment POST /cart) — see docs/API_GAPS.md.
-                onDecrement: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text("Decreasing quantity isn't supported by the backend yet"),
-                    ),
-                  );
-                },
+                // minValue: 0 (rather than the default 1) so the last
+                // decrement is reachable — it removes the line item.
+                minValue: 0,
+                onIncrement: () =>
+                    notifier.setQuantity(cartItemId: item.cartItemId, quantity: item.quantity + 1),
+                onDecrement: () => item.quantity <= 1
+                    ? notifier.removeItem(item.cartItemId)
+                    : notifier.setQuantity(cartItemId: item.cartItemId, quantity: item.quantity - 1),
               ),
             ],
           ),

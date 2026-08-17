@@ -34,7 +34,12 @@ class _ProductDetailsScreenState extends ConsumerState<ProductDetailsScreen> {
         child: productAsync.when(
           data: (product) => ListView(
             children: [
-              ProductImagePlaceholder(label: product.name, height: 260, borderRadius: 0),
+              ProductImagePlaceholder(
+                label: product.name,
+                imageUrl: product.imageUrl,
+                height: 260,
+                borderRadius: 0,
+              ),
               Padding(
                 padding: const EdgeInsets.all(20),
                 child: Column(

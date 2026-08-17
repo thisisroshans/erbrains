@@ -12,19 +12,22 @@ class Auth extends _$Auth {
   @override
   AuthState build() => const AuthState();
 
-  /// Checks for a persisted session on app launch. Note: the backend's
-  /// token is an opaque, unverified blob — see docs/API_GAPS.md — so
-  /// "restoring a session" here just means "we have a saved user id",
-  /// not a validated server-side session.
+  /// Checks for a persisted session on app launch. The backend's
+  /// middleware verifies the token is well-formed and scopes every request
+  /// to its userId, but the token itself is still an opaque, unsigned
+  /// blob (see api/middleware/auth.js) — this just restores "we have a
+  /// saved session," the first real request will fail loudly if the
+  /// server no longer accepts it.
   Future<void> restoreSession() async {
     final storage = ref.read(tokenStorageProvider);
     final userId = await storage.readUserId();
     final email = await storage.readEmail();
+    final name = await storage.readName();
 
     state = (userId != null && email != null)
         ? state.copyWith(
             status: AuthStatus.authenticated,
-            user: AppUser(id: userId, email: email),
+            user: AppUser(id: userId, email: email, name: name),
           )
         : state.copyWith(status: AuthStatus.unauthenticated);
   }
@@ -44,6 +47,7 @@ class Auth extends _$Auth {
             token: token,
             userId: loggedInUser.id,
             email: loggedInUser.email,
+            name: loggedInUser.name,
           );
 
       state = state.copyWith(

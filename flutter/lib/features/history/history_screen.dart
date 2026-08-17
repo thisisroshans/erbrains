@@ -120,6 +120,7 @@ class _SummaryCharts extends StatelessWidget {
     final avgSpo2 =
         (points.map((p) => p.avgSpo2).reduce((a, b) => a + b) / points.length)
             .round();
+    final minSpo2 = points.map((p) => p.minSpo2).reduce((a, b) => a < b ? a : b);
 
     return Column(
       spacing: 12,
@@ -147,7 +148,7 @@ class _SummaryCharts extends StatelessWidget {
                 values: points.map((p) => p.avgSpo2.toDouble()).toList(),
                 height: 40,
               ),
-              Text('Avg $avgSpo2%', style: NocturneType.caption),
+              Text('Avg $avgSpo2% · Min $minSpo2%', style: NocturneType.caption),
             ],
           ),
         ),

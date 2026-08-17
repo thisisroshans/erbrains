@@ -5,7 +5,7 @@ class Order {
     required this.totalAmount,
     required this.status,
     required this.createdAt,
-    this.itemCount,
+    required this.itemCount,
   });
 
   final String id;
@@ -14,10 +14,9 @@ class Order {
   final String status;
   final DateTime createdAt;
 
-  /// `GET /orders` doesn't join `order_items` to return a count today —
-  /// see docs/API_GAPS.md. Null until that lands; the Order History screen
-  /// omits the "N items" line when this is null rather than fabricating it.
-  final int? itemCount;
+  /// From `GET /orders`' `item_count` aggregate (a `COUNT` subquery over
+  /// `order_items` — see api/app.js).
+  final int itemCount;
 
   factory Order.fromJson(Map<String, dynamic> json) {
     return Order(
@@ -26,9 +25,7 @@ class Order {
       totalAmount: double.parse(json['total_amount'].toString()),
       status: json['status'] as String,
       createdAt: DateTime.parse(json['created_at'] as String),
-      itemCount: json['item_count'] != null
-          ? (json['item_count'] as num).toInt()
-          : null,
+      itemCount: (json['item_count'] as num).toInt(),
     );
   }
 }

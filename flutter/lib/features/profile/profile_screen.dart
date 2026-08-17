@@ -9,9 +9,10 @@ import '../connection/connection_screen.dart';
 
 /// Screen 11 · Settings / Profile.
 ///
-/// The backend's `users` table has no display-name column — see
-/// docs/API_GAPS.md — so the avatar initials and name are derived from
-/// the email locally ([AppUser.displayName]/[AppUser.initials]).
+/// The avatar initials and name come from `users.name` when the account
+/// has one (e.g. the seeded demo user); [AppUser.displayName]/`.initials`
+/// fall back to deriving something from the email for accounts that were
+/// created without a name.
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key, required this.userId});
 

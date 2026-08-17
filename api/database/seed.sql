@@ -11,4 +11,4 @@ VALUES
     ('Replacement Silicone Band', 'Comfort-fit silicone band, available in multiple sizes.', 9.99, 500, 'https://placehold.co/400x400/232532/e9e9ed?text=Silicone+Band'),
     ('Sleep & Recovery Add-on', 'Companion sensor for advanced sleep tracking.', 59.99, 75, 'https://placehold.co/400x400/232532/e9e9ed?text=Sleep+Add-on'),
     ('Travel Case', 'Compact protective case for your wearable and accessories.', 19.99, 150, 'https://placehold.co/400x400/232532/e9e9ed?text=Travel+Case')
-ON CONFLICT (name) DO NOTHING;
+ON CONFLICT (name) DO UPDATE SET image_url = EXCLUDED.image_url;
