@@ -3,6 +3,7 @@ jest.mock("../db");
 const request = require("supertest");
 const db = require("../db");
 const app = require("../app");
+const { authHeader } = require("./helpers/auth");
 
 describe("POST /health/readings", () => {
     beforeEach(() => {
@@ -12,6 +13,7 @@ describe("POST /health/readings", () => {
     it("rejects a request with no userId", async () => {
         const res = await request(app)
             .post("/health/readings")
+            .set("Authorization", authHeader("user-1"))
             .send({ readings: [] });
 
         expect(res.status).toBe(400);
@@ -20,6 +22,7 @@ describe("POST /health/readings", () => {
     it("rejects a request with an empty readings array", async () => {
         const res = await request(app)
             .post("/health/readings")
+            .set("Authorization", authHeader("user-1"))
             .send({ userId: "user-1", readings: [] });
 
         expect(res.status).toBe(400);
@@ -28,6 +31,7 @@ describe("POST /health/readings", () => {
     it("rejects a reading missing a required field", async () => {
         const res = await request(app)
             .post("/health/readings")
+            .set("Authorization", authHeader("user-1"))
             .send({
                 userId: "user-1",
                 readings: [
@@ -47,6 +51,7 @@ describe("POST /health/readings", () => {
     it("rejects a reading with an invalid timestamp", async () => {
         const res = await request(app)
             .post("/health/readings")
+            .set("Authorization", authHeader("user-1"))
             .send({
                 userId: "user-1",
                 readings: [
@@ -63,6 +68,26 @@ describe("POST /health/readings", () => {
         expect(res.status).toBe(400);
     });
 
+    it("rejects a userId that doesn't match the authenticated caller", async () => {
+        const res = await request(app)
+            .post("/health/readings")
+            .set("Authorization", authHeader("user-1"))
+            .send({
+                userId: "someone-else",
+                readings: [
+                    {
+                        deviceId: "FITRING-001",
+                        heartRate: 78,
+                        spo2: 98,
+                        steps: 100,
+                        timestamp: "2026-08-17T10:30:00Z",
+                    },
+                ],
+            });
+
+        expect(res.status).toBe(403);
+    });
+
     it("syncs new readings and skips duplicates already stored (ON CONFLICT DO NOTHING)", async () => {
         // First reading is new (row returned), second is a duplicate (no row returned)
         db.query
@@ -71,6 +96,7 @@ describe("POST /health/readings", () => {
 
         const res = await request(app)
             .post("/health/readings")
+            .set("Authorization", authHeader("user-1"))
             .send({
                 userId: "user-1",
                 readings: [
@@ -103,6 +129,7 @@ describe("POST /health/readings", () => {
 
         const res = await request(app)
             .post("/health/readings")
+            .set("Authorization", authHeader("unknown-user"))
             .send({
                 userId: "unknown-user",
                 readings: [
@@ -127,7 +154,10 @@ describe("GET /health/readings", () => {
     });
 
     it("rejects a request with no userId", async () => {
-        const res = await request(app).get("/health/readings");
+        const res = await request(app)
+            .get("/health/readings")
+            .set("Authorization", authHeader("user-1"));
+
         expect(res.status).toBe(400);
     });
 
@@ -136,6 +166,7 @@ describe("GET /health/readings", () => {
 
         const res = await request(app)
             .get("/health/readings")
+            .set("Authorization", authHeader("user-1"))
             .query({ userId: "user-1", limit: "5000" });
 
         expect(res.status).toBe(200);

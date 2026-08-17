@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const db = require("./db");
 const authRoutes = require("./auth.routes");
+const { requireAuth, ensureSelf } = require("./middleware/auth");
 
 const app = express();
 
@@ -9,9 +10,39 @@ app.use(cors());
 app.use(express.json());
 
 // ==========================================
-// AUTH API
+// AUTH API (public)
 // ==========================================
 app.use("/auth", authRoutes);
+
+// ==========================================
+// SHOPPING API — public catalog reads
+// ==========================================
+
+app.get('/products', async (req, res) => {
+    try {
+        const result = await db.query('SELECT * FROM products ORDER BY created_at DESC');
+        res.status(200).json(result.rows);
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to fetch products' });
+    }
+});
+
+app.get('/products/:id', async (req, res) => {
+    try {
+        const result = await db.query('SELECT * FROM products WHERE id = $1', [req.params.id]);
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Product not found' });
+        res.status(200).json(result.rows[0]);
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to fetch product details' });
+    }
+});
+
+// ==========================================
+// Everything below requires a valid bearer token. Routes that also take
+// a userId in the body/query additionally call ensureSelf() so a valid
+// token for user A can't be used to act on user B's data.
+// ==========================================
+app.use(requireAuth);
 
 // ==========================================
 // DEVICES API
@@ -25,6 +56,8 @@ app.post("/devices", async (req, res) => {
             error: "deviceId, name and userId are required",
         });
     }
+
+    if (!ensureSelf(req, res, userId)) return;
 
     try {
         const result = await db.query(
@@ -73,6 +106,8 @@ app.get("/devices", async (req, res) => {
         });
     }
 
+    if (!ensureSelf(req, res, userId)) return;
+
     try {
         const result = await db.query(
             `
@@ -109,6 +144,8 @@ app.post("/health/readings", async (req, res) => {
             error: "userId is required",
         });
     }
+
+    if (!ensureSelf(req, res, userId)) return;
 
     // ------------------------------------------
     // Validate readings array
@@ -248,6 +285,8 @@ app.get("/health/readings", async (req, res) => {
         });
     }
 
+    if (!ensureSelf(req, res, userId)) return;
+
     const offset = (page - 1) * limit;
 
     try {
@@ -290,6 +329,8 @@ app.get("/health/summary", async (req, res) => {
         });
     }
 
+    if (!ensureSelf(req, res, userId)) return;
+
     if (!["daily", "weekly"].includes(period)) {
         return res.status(400).json({
             error: "period must be either daily or weekly",
@@ -310,6 +351,7 @@ app.get("/health/summary", async (req, res) => {
                 MIN(heart_rate) AS min_heart_rate,
                 MAX(heart_rate) AS max_heart_rate,
                 AVG(spo2)::INT AS avg_spo2,
+                MIN(spo2) AS min_spo2,
                 MAX(steps) AS total_steps
             FROM health_readings
             WHERE user_id = $1
@@ -332,27 +374,8 @@ app.get("/health/summary", async (req, res) => {
 });
 
 // ==========================================
-// SHOPPING API
+// SHOPPING API — cart & orders (auth required)
 // ==========================================
-
-app.get('/products', async (req, res) => {
-    try {
-        const result = await db.query('SELECT * FROM products ORDER BY created_at DESC');
-        res.status(200).json(result.rows);
-    } catch (err) {
-        res.status(500).json({ error: 'Failed to fetch products' });
-    }
-});
-
-app.get('/products/:id', async (req, res) => {
-    try {
-        const result = await db.query('SELECT * FROM products WHERE id = $1', [req.params.id]);
-        if (result.rows.length === 0) return res.status(404).json({ error: 'Product not found' });
-        res.status(200).json(result.rows[0]);
-    } catch (err) {
-        res.status(500).json({ error: 'Failed to fetch product details' });
-    }
-});
 
 app.post('/cart', async (req, res) => {
     const { userId, productId, quantity } = req.body;
@@ -362,6 +385,8 @@ app.post('/cart', async (req, res) => {
             error: "userId, productId and quantity are required",
         });
     }
+
+    if (!ensureSelf(req, res, userId)) return;
 
     if (!Number.isInteger(quantity) || quantity <= 0) {
         return res.status(400).json({
@@ -393,6 +418,8 @@ app.get('/cart', async (req, res) => {
         });
     }
 
+    if (!ensureSelf(req, res, userId)) return;
+
     try {
         const result = await db.query(
             `SELECT c.id AS cart_item_id, c.quantity, p.id AS product_id, p.name, p.price,
@@ -410,6 +437,56 @@ app.get('/cart', async (req, res) => {
     }
 });
 
+// Sets a line item to an exact quantity — the counterpart to POST /cart's
+// increment-only upsert. Ownership is enforced by scoping the UPDATE to
+// the authenticated caller's user_id, not just the cart_items.id.
+app.patch('/cart/:id', async (req, res) => {
+    const { quantity } = req.body;
+
+    if (!Number.isInteger(quantity) || quantity <= 0) {
+        return res.status(400).json({
+            error: "quantity must be a positive integer",
+        });
+    }
+
+    try {
+        const result = await db.query(
+            `UPDATE cart_items
+             SET quantity = $1
+             WHERE id = $2 AND user_id = $3
+             RETURNING *`,
+            [quantity, req.params.id, req.auth.userId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Cart item not found' });
+        }
+
+        res.status(200).json(result.rows[0]);
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to update cart item' });
+    }
+});
+
+app.delete('/cart/:id', async (req, res) => {
+    try {
+        const result = await db.query(
+            `DELETE FROM cart_items
+             WHERE id = $1 AND user_id = $2
+             RETURNING id`,
+            [req.params.id, req.auth.userId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Cart item not found' });
+        }
+
+        res.status(204).send();
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to remove cart item' });
+    }
+});
+
 app.post("/orders", async (req, res) => {
     const { userId } = req.body;
 
@@ -418,6 +495,8 @@ app.post("/orders", async (req, res) => {
             error: "userId is required",
         });
     }
+
+    if (!ensureSelf(req, res, userId)) return;
 
     try {
         const result = await db.transaction(async (client) => {
@@ -531,9 +610,22 @@ app.get('/orders', async (req, res) => {
         });
     }
 
+    if (!ensureSelf(req, res, userId)) return;
+
     try {
         const result = await db.query(
-            `SELECT * FROM orders WHERE user_id = $1 ORDER BY created_at DESC`,
+            `
+            SELECT
+                o.*,
+                (
+                    SELECT COUNT(*)::INT
+                    FROM order_items oi
+                    WHERE oi.order_id = o.id
+                ) AS item_count
+            FROM orders o
+            WHERE o.user_id = $1
+            ORDER BY o.created_at DESC
+            `,
             [userId]
         );
         res.status(200).json(result.rows);

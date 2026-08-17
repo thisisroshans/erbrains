@@ -8,12 +8,13 @@ Node.js + Express + PostgreSQL.
 Plain layered Express app, no framework magic:
 
 ```
-server.js   -> loads env vars, starts the HTTP listener
-app.js      -> Express app: middleware + all route handlers (exported, no listen())
-auth.routes.js -> /auth/* routes, mounted on app.js
-db.js       -> pg Pool wrapper (query + transaction helper)
-database/   -> schema.sql, seed.sql and the Node scripts that run them
-tests/      -> Jest + Supertest, route logic tested against a mocked db module
+server.js       -> loads env vars, starts the HTTP listener
+app.js          -> Express app: middleware + all route handlers (exported, no listen())
+auth.routes.js  -> /auth/* routes, mounted on app.js
+middleware/     -> auth.js: verifies the bearer token and exposes req.auth
+db.js           -> pg Pool wrapper (query + transaction helper)
+database/       -> schema.sql, seed.sql and the Node scripts that run them
+tests/          -> Jest + Supertest, route logic tested against a mocked db module
 ```
 
 `app.js` is separated from `server.js` specifically so it can be `require`d by tests
@@ -32,8 +33,8 @@ npm start               # http://localhost:3000
 `npm run db:seed` ([`database/seed.js`](database/seed.js)) populates enough data to exercise the whole
 API immediately, without placing calls by hand first:
 
-- 5 sample products ([`database/seed.sql`](database/seed.sql))
-- a demo user — `demo@erbrains.io` / `password123` — log in with `POST /auth/login`
+- 5 sample products, each with a placeholder `image_url` ([`database/seed.sql`](database/seed.sql))
+- a demo user — `demo@erbrains.io` / `password123` / name "Jordan Lee" — log in with `POST /auth/login`
 - a demo device (`FITRING-001`) owned by that user
 - ~3 days of health readings at 15-minute intervals, so `/health/readings` and
   `/health/summary` have something to return right away
@@ -61,11 +62,16 @@ npm test
 Route handlers are tested against a mocked `db` module (no live database required),
 covering the areas most likely to cause data loss or incorrect business results:
 
+- **Auth middleware**: missing/malformed tokens rejected with `401`, a token whose
+  `userId` doesn't match the requested resource rejected with `403`, public routes
+  (`/auth/login`, `GET /products*`) reachable with no token at all.
 - **Health readings**: request validation, and duplicate-skip counting for the
   `ON CONFLICT (device_id, reading_timestamp) DO NOTHING` sync path.
-- **Cart**: validation, and quantity merging via `ON CONFLICT (user_id, product_id)`.
-- **Orders**: rejecting checkout on an empty cart, and the full checkout transaction
-  (cart snapshot → order + order_items → cart cleared) via the mocked `db.transaction`.
+- **Cart**: validation, quantity merging via `ON CONFLICT (user_id, product_id)`, and
+  the `PATCH`/`DELETE` endpoints' ownership check (scoped to `user_id`, not just `:id`).
+- **Orders**: rejecting checkout on an empty cart, the full checkout transaction
+  (cart snapshot → order + order_items → cart cleared) via the mocked `db.transaction`,
+  and the `item_count` aggregate on `GET /orders`.
 
 ## Database
 
@@ -87,6 +93,7 @@ erDiagram
         UUID id PK
         VARCHAR email
         VARCHAR password_hash
+        VARCHAR name
         TIMESTAMP created_at
     }
 
@@ -114,6 +121,7 @@ erDiagram
         TEXT description
         DECIMAL price
         INTEGER stock
+        TEXT image_url
     }
 
     cart_items {
@@ -148,43 +156,61 @@ constraints beyond the diagram:
   is a no-op instead of a duplicate row.
 - `cart_items` has `UNIQUE (user_id, product_id)` — `POST /cart` upserts onto this,
   incrementing quantity instead of creating a second line item for the same product.
+- `products.name` is `UNIQUE` — that's what makes `database/seed.sql`'s
+  `ON CONFLICT (name) DO NOTHING` an actual no-op on re-seed instead of duplicating rows.
 - Foreign keys cascade on delete (e.g. deleting a user cleans up their devices, readings,
   cart items and orders).
+- `schema.sql` ends with a few `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` / guarded
+  `ADD CONSTRAINT` statements so `npm run db:migrate` stays safe to re-run against a
+  database that was created before `users.name` / `products.image_url` existed.
 
 ## API Documentation
 
 All endpoints accept/return JSON. Errors are `{ "error": "..." }` with a 4xx/5xx status.
 
-### Auth
+**Auth:** every route below except `POST /auth/login` and the two `GET /products` routes
+requires `Authorization: Bearer <token>` (the token `POST /auth/login` returns). Routes
+that also take a `userId` in the body/query additionally verify it matches the token's
+`userId` — a valid token for one user can't read or act on another user's data. See
+[middleware/auth.js](middleware/auth.js).
+
+### Auth (public)
 | Method | Path | Body | Notes |
 |---|---|---|---|
-| POST | `/auth/login` | `{ email, password }` | Creates the user on first login (local-dev auth), otherwise verifies the password hash. Returns `{ token, user }`. |
+| POST | `/auth/login` | `{ email, password, name? }` | Creates the user on first login (local-dev auth; `name` is optional and only used on creation), otherwise verifies the password hash. Returns `{ token, user: { id, email, name } }`. |
 
-### Devices
+### Devices (auth required)
 | Method | Path | Body / Query | Notes |
 |---|---|---|---|
 | POST | `/devices` | `{ deviceId, name, userId }` | Upserts by `deviceId`, marks it `connected`. |
 | GET | `/devices?userId=` | — | Lists devices for a user. |
 
-### Health data
+### Health data (auth required)
 | Method | Path | Body / Query | Notes |
 |---|---|---|---|
 | POST | `/health/readings` | `{ userId, readings: [{ deviceId, heartRate, spo2, steps, timestamp }] }` | Batch upload. Returns `{ synced, duplicatesSkipped }`. Safe to retry — duplicates are skipped via the DB unique constraint, not client-side de-duplication. |
 | GET | `/health/readings?userId=&page=&limit=` | — | Paginated, `limit` capped at 100 so the UI never has to render an unbounded page. |
-| GET | `/health/summary?userId=&period=daily\|weekly` | — | Aggregated min/max/avg over the last 7 days, bucketed by day or week — this is what backs the History screen's charts instead of shipping raw rows to the client. |
+| GET | `/health/summary?userId=&period=daily\|weekly` | — | Aggregated min/max/avg heart rate, avg/min SpO₂, and total steps over the last 7 days, bucketed by day or week — this is what backs the History screen's charts instead of shipping raw rows to the client. |
 
-### Shopping
+### Shopping — catalog (public)
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/products` | Full catalog, including each product's `image_url`. |
+| GET | `/products/:id` | 404 if not found. |
+
+### Shopping — cart & orders (auth required)
 | Method | Path | Body / Query | Notes |
 |---|---|---|---|
-| GET | `/products` | — | Full catalog. |
-| GET | `/products/:id` | — | 404 if not found. |
-| POST | `/cart` | `{ userId, productId, quantity }` | Adds or increments a line item. |
+| POST | `/cart` | `{ userId, productId, quantity }` | Adds a line item, or increments its quantity if one already exists for that product. |
 | GET | `/cart?userId=` | — | Items + computed `totalAmount`. |
+| PATCH | `/cart/:id` | `{ quantity }` | Sets the line item to an exact quantity (the decrement counterpart to `POST /cart`'s increment-only upsert). 404 if `:id` isn't a cart item owned by the caller. |
+| DELETE | `/cart/:id` | — | Removes the line item. 204 on success, 404 if not owned by the caller. |
 | POST | `/orders` | `{ userId }` | Converts the current cart into an order inside a single DB transaction (snapshot prices into `order_items`, then empty the cart). 400 if the cart is empty. |
-| GET | `/orders?userId=` | — | Order history. |
+| GET | `/orders?userId=` | — | Order history, each row including an `item_count` aggregated from `order_items`. |
 
 A ready-to-import collection is in [`Wearable-Health-API.postman_collection.json`](Wearable-Health-API.postman_collection.json)
-(regenerate with `generate-postman.ps1`).
+(regenerate with `generate-postman.ps1`). Run **POST /auth/login** first — its test script
+populates the collection's `{{token}}` and `{{userId}}` variables that every other request uses.
 
 ## Error handling
 
@@ -196,7 +222,13 @@ A ready-to-import collection is in [`Wearable-Health-API.postman_collection.json
   commits anything.
 - **Unexpected/DB errors**: `500` with a generic message; the real error is logged server-side,
   never leaked to the client.
-- **Auth failure**: wrong password on an existing email returns `401`.
+- **Auth failure**: wrong password on an existing email returns `401`, as does a missing or
+  malformed bearer token on any protected route.
+- **Acting on behalf of another user**: a valid token whose `userId` doesn't match the
+  `userId` in the request body/query returns `403`.
+- **Cart item not owned by the caller**: `PATCH`/`DELETE /cart/:id` return `404` rather than
+  `403` when `:id` doesn't resolve to a row owned by `req.auth.userId` — this avoids
+  confirming to a caller that a given cart-item id exists at all.
 
 ## Major technical decisions
 
@@ -206,6 +238,15 @@ A ready-to-import collection is in [`Wearable-Health-API.postman_collection.json
 - **Transactions for checkout only.** `POST /orders` is the one place multiple writes must
   succeed or fail together (order + order_items + cart clear); everything else is single-statement.
 - **Mock auth, not JWT.** The assignment allows mock authentication; the token is an opaque
-  base64 blob, not meant to be a production auth scheme. Swapping in signed JWTs later only
-  touches `auth.routes.js`.
+  base64 blob, not meant to be a production auth scheme. `middleware/auth.js` decodes and
+  trusts it (there's no signature to verify) — swapping in signed JWTs later only touches
+  that one file plus `auth.routes.js`; no route handler changes.
+- **Ownership checks live in the route handlers (`ensureSelf`), not just the middleware.**
+  `requireAuth` only proves *who's asking*; each handler still decides whether that identity
+  is allowed to touch the specific `userId`/row in the request. Keeping that explicit per
+  route (rather than inferring it generically) is what makes `PATCH`/`DELETE /cart/:id`
+  scope their `WHERE` clause to `user_id = req.auth.userId` instead of trusting `:id` alone.
 - **`app.js` / `server.js` split** exists purely for testability (see Architecture above).
+- **`products.image_url` points at placeholder images** (`placehold.co`), not real product
+  photography — there isn't any for this project. Swap the seed data for real asset URLs
+  whenever it exists; no schema change needed.

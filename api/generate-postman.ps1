@@ -2,65 +2,29 @@ $ErrorActionPreference = "Stop"
 
 $output = Join-Path $PSScriptRoot "Wearable-Health-API.postman_collection.json"
 
-function JsonRequest {
-    param(
-        [string]$Method,
-        [string]$Path,
-        [string]$Body = $null,
-        [array]$Tests = @()
-    )
-
-    $request = @{
-        method = $Method
-        header = @(
-            @{
-                key = "Content-Type"
-                value = "application/json"
-                type = "text"
-            }
-        )
-        url = @{
-            raw = "{{baseUrl}}$Path"
-            host = @("{{baseUrl}}")
-            path = ($Path.TrimStart("/") -split "/")
-        }
+function AuthHeader {
+    @{
+        key   = "Authorization"
+        value = "Bearer {{token}}"
+        type  = "text"
     }
+}
 
-    if ($Body) {
-        $request.body = @{
-            mode = "raw"
-            raw = $Body
-            options = @{
-                raw = @{
-                    language = "json"
-                }
-            }
-        }
+function JsonHeader {
+    @{
+        key   = "Content-Type"
+        value = "application/json"
+        type  = "text"
     }
-
-    $item = @{
-        name = "$Method $Path"
-        request = $request
-    }
-
-    if ($Tests.Count -gt 0) {
-        $item.event = @(
-            @{
-                listen = "test"
-                script = @{
-                    type = "text/javascript"
-                    exec = $Tests
-                }
-            }
-        )
-    }
-
-    return $item
 }
 
 # ============================================================
 # COLLECTION
 # ============================================================
+# NB: every route except POST /auth/login and the two GET /products
+# endpoints requires a valid bearer token (see api/middleware/auth.js).
+# Run "POST /auth/login" first — its test script populates {{token}} and
+# {{userId}} for every request below.
 
 $collection = @{
     info = @{
@@ -81,6 +45,10 @@ $collection = @{
         @{
             key = "token"
             value = ""
+        },
+        @{
+            key = "cartItemId"
+            value = ""
         }
     )
 
@@ -100,19 +68,15 @@ $collection.item += @{
             request = @{
                 method = "POST"
 
-                header = @(
-                    @{
-                        key = "Content-Type"
-                        value = "application/json"
-                    }
-                )
+                header = @(JsonHeader)
 
                 body = @{
                     mode = "raw"
                     raw = @'
 {
   "email": "user@example.com",
-  "password": "password123"
+  "password": "password123",
+  "name": "Jordan Lee"
 }
 '@
                     options = @{
@@ -167,7 +131,7 @@ $collection.item += @{
 }
 
 # ============================================================
-# DEVICES
+# DEVICES  (auth required)
 # ============================================================
 
 $collection.item += @{
@@ -180,12 +144,7 @@ $collection.item += @{
             request = @{
                 method = "POST"
 
-                header = @(
-                    @{
-                        key = "Content-Type"
-                        value = "application/json"
-                    }
-                )
+                header = @(JsonHeader; AuthHeader)
 
                 body = @{
                     mode = "raw"
@@ -233,6 +192,8 @@ $collection.item += @{
             request = @{
                 method = "GET"
 
+                header = @(AuthHeader)
+
                 url = @{
                     raw = "{{baseUrl}}/devices?userId={{userId}}"
                     host = @("{{baseUrl}}")
@@ -268,7 +229,7 @@ $collection.item += @{
 }
 
 # ============================================================
-# HEALTH
+# HEALTH  (auth required)
 # ============================================================
 
 $collection.item += @{
@@ -281,12 +242,7 @@ $collection.item += @{
             request = @{
                 method = "POST"
 
-                header = @(
-                    @{
-                        key = "Content-Type"
-                        value = "application/json"
-                    }
-                )
+                header = @(JsonHeader; AuthHeader)
 
                 body = @{
                     mode = "raw"
@@ -341,6 +297,8 @@ $collection.item += @{
             request = @{
                 method = "GET"
 
+                header = @(AuthHeader)
+
                 url = @{
                     raw = "{{baseUrl}}/health/readings?userId={{userId}}&page=1&limit=50"
                     host = @("{{baseUrl}}")
@@ -369,6 +327,8 @@ $collection.item += @{
             request = @{
                 method = "GET"
 
+                header = @(AuthHeader)
+
                 url = @{
                     raw = "{{baseUrl}}/health/summary?userId={{userId}}"
                     host = @("{{baseUrl}}")
@@ -386,7 +346,7 @@ $collection.item += @{
 }
 
 # ============================================================
-# PRODUCTS
+# PRODUCTS  (public — no Authorization header)
 # ============================================================
 
 $collection.item += @{
@@ -424,7 +384,7 @@ $collection.item += @{
 }
 
 # ============================================================
-# CART
+# CART  (auth required)
 # ============================================================
 
 $collection.item += @{
@@ -437,12 +397,7 @@ $collection.item += @{
             request = @{
                 method = "POST"
 
-                header = @(
-                    @{
-                        key = "Content-Type"
-                        value = "application/json"
-                    }
-                )
+                header = @(JsonHeader; AuthHeader)
 
                 body = @{
                     mode = "raw"
@@ -468,6 +423,22 @@ $collection.item += @{
                     path = @("cart")
                 }
             }
+
+            event = @(
+                @{
+                    listen = "test"
+                    script = @{
+                        type = "text/javascript"
+                        exec = @(
+                            'const json = pm.response.json();'
+                            ''
+                            'if (json.id) {'
+                            '    pm.collectionVariables.set("cartItemId", json.id);'
+                            '}'
+                        )
+                    }
+                }
+            )
         },
 
         @{
@@ -475,6 +446,8 @@ $collection.item += @{
 
             request = @{
                 method = "GET"
+
+                header = @(AuthHeader)
 
                 url = @{
                     raw = "{{baseUrl}}/cart?userId={{userId}}"
@@ -488,12 +461,60 @@ $collection.item += @{
                     )
                 }
             }
+        },
+
+        @{
+            name = "PATCH /cart/:id"
+
+            request = @{
+                method = "PATCH"
+
+                header = @(JsonHeader; AuthHeader)
+
+                body = @{
+                    mode = "raw"
+
+                    raw = @'
+{
+  "quantity": 3
+}
+'@
+
+                    options = @{
+                        raw = @{
+                            language = "json"
+                        }
+                    }
+                }
+
+                url = @{
+                    raw = "{{baseUrl}}/cart/{{cartItemId}}"
+                    host = @("{{baseUrl}}")
+                    path = @("cart", "{{cartItemId}}")
+                }
+            }
+        },
+
+        @{
+            name = "DELETE /cart/:id"
+
+            request = @{
+                method = "DELETE"
+
+                header = @(AuthHeader)
+
+                url = @{
+                    raw = "{{baseUrl}}/cart/{{cartItemId}}"
+                    host = @("{{baseUrl}}")
+                    path = @("cart", "{{cartItemId}}")
+                }
+            }
         }
     )
 }
 
 # ============================================================
-# ORDERS
+# ORDERS  (auth required)
 # ============================================================
 
 $collection.item += @{
@@ -506,12 +527,7 @@ $collection.item += @{
             request = @{
                 method = "POST"
 
-                header = @(
-                    @{
-                        key = "Content-Type"
-                        value = "application/json"
-                    }
-                )
+                header = @(JsonHeader; AuthHeader)
 
                 body = @{
                     mode = "raw"
@@ -542,6 +558,8 @@ $collection.item += @{
 
             request = @{
                 method = "GET"
+
+                header = @(AuthHeader)
 
                 url = @{
                     raw = "{{baseUrl}}/orders?userId={{userId}}"

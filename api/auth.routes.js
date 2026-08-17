@@ -16,7 +16,7 @@ const router = express.Router();
  */
 router.post("/login", async (req, res) => {
     try {
-        const { email, password } = req.body;
+        const { email, password, name } = req.body;
 
         // Validate required fields
         if (!email || !password) {
@@ -30,7 +30,7 @@ router.post("/login", async (req, res) => {
         // Find existing user
         let result = await db.query(
             `
-            SELECT id, email, password_hash
+            SELECT id, email, name, password_hash
             FROM users
             WHERE LOWER(email) = $1
             LIMIT 1
@@ -51,11 +51,11 @@ router.post("/login", async (req, res) => {
 
             result = await db.query(
                 `
-                INSERT INTO users (email, password_hash)
-                VALUES ($1, $2)
-                RETURNING id, email
+                INSERT INTO users (email, password_hash, name)
+                VALUES ($1, $2, $3)
+                RETURNING id, email, name
                 `,
-                [normalizedEmail, passwordHash]
+                [normalizedEmail, passwordHash, name ? String(name).trim() : null]
             );
 
             user = result.rows[0];
@@ -100,6 +100,7 @@ router.post("/login", async (req, res) => {
             user: {
                 id: user.id,
                 email: user.email,
+                name: user.name,
             },
         });
 

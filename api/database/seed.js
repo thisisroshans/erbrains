@@ -15,6 +15,7 @@ const pool = new Pool({
 
 const DEMO_EMAIL = "demo@erbrains.io";
 const DEMO_PASSWORD = "password123";
+const DEMO_NAME = "Jordan Lee";
 const DEMO_DEVICE_ID = "FITRING-001";
 
 // Must match the hashing in auth.routes.js so the demo user can actually log in.
@@ -30,12 +31,12 @@ async function seedProducts() {
 async function seedDemoUser() {
     const result = await pool.query(
         `
-        INSERT INTO users (email, password_hash)
-        VALUES ($1, $2)
-        ON CONFLICT (email) DO UPDATE SET email = EXCLUDED.email
+        INSERT INTO users (email, password_hash, name)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name
         RETURNING id
         `,
-        [DEMO_EMAIL, hashPassword(DEMO_PASSWORD)]
+        [DEMO_EMAIL, hashPassword(DEMO_PASSWORD), DEMO_NAME]
     );
 
     return result.rows[0].id;
@@ -173,7 +174,7 @@ async function seed() {
 
     console.log("");
     console.log("Seed complete:");
-    console.log(`  demo login  -> email: ${DEMO_EMAIL}  password: ${DEMO_PASSWORD}`);
+    console.log(`  demo login  -> email: ${DEMO_EMAIL}  password: ${DEMO_PASSWORD}  name: ${DEMO_NAME}`);
     console.log(`  demo device -> ${DEMO_DEVICE_ID}`);
     console.log(`  readings    -> ${synced} new reading(s) inserted`);
     console.log(`  demo order  -> ${orderId ?? "skipped (no products)"}`);
@@ -195,5 +196,6 @@ module.exports = {
     hashPassword,
     DEMO_EMAIL,
     DEMO_PASSWORD,
+    DEMO_NAME,
     DEMO_DEVICE_ID,
 };

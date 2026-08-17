@@ -11,6 +11,10 @@
                      {
                          "key":  "token",
                          "value":  ""
+                     },
+                     {
+                         "key":  "cartItemId",
+                         "value":  ""
                      }
                  ],
     "info":  {
@@ -36,7 +40,7 @@
                                                               },
                                                       "method":  "POST",
                                                       "body":  {
-                                                                   "raw":  "{\n  \"email\": \"user@example.com\",\n  \"password\": \"password123\"\n}",
+                                                                   "raw":  "{\n  \"email\": \"user@example.com\",\n  \"password\": \"password123\",\n  \"name\": \"Jordan Lee\"\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -47,6 +51,7 @@
                                                       "header":  [
                                                                      {
                                                                          "key":  "Content-Type",
+                                                                         "type":  "text",
                                                                          "value":  "application/json"
                                                                      }
                                                                  ]
@@ -113,7 +118,13 @@
                                                       "header":  [
                                                                      {
                                                                          "key":  "Content-Type",
+                                                                         "type":  "text",
                                                                          "value":  "application/json"
+                                                                     },
+                                                                     {
+                                                                         "key":  "Authorization",
+                                                                         "type":  "text",
+                                                                         "value":  "Bearer {{token}}"
                                                                      }
                                                                  ]
                                                   },
@@ -149,7 +160,14 @@
                                                                   "path":  [
                                                                                "devices"
                                                                            ]
-                                                              }
+                                                              },
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Authorization",
+                                                                         "type":  "text",
+                                                                         "value":  "Bearer {{token}}"
+                                                                     }
+                                                                 ]
                                                   },
                                       "name":  "GET /devices",
                                       "event":  [
@@ -200,7 +218,13 @@
                                                       "header":  [
                                                                      {
                                                                          "key":  "Content-Type",
+                                                                         "type":  "text",
                                                                          "value":  "application/json"
+                                                                     },
+                                                                     {
+                                                                         "key":  "Authorization",
+                                                                         "type":  "text",
+                                                                         "value":  "Bearer {{token}}"
                                                                      }
                                                                  ]
                                                   },
@@ -246,7 +270,14 @@
                                                                                "health",
                                                                                "readings"
                                                                            ]
-                                                              }
+                                                              },
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Authorization",
+                                                                         "type":  "text",
+                                                                         "value":  "Bearer {{token}}"
+                                                                     }
+                                                                 ]
                                                   }
                                   },
                                   {
@@ -268,7 +299,14 @@
                                                                                "health",
                                                                                "summary"
                                                                            ]
-                                                              }
+                                                              },
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Authorization",
+                                                                         "type":  "text",
+                                                                         "value":  "Bearer {{token}}"
+                                                                     }
+                                                                 ]
                                                   }
                                   }
                               ]
@@ -313,7 +351,6 @@
                      "name":  "Cart",
                      "item":  [
                                   {
-                                      "name":  "POST /cart",
                                       "request":  {
                                                       "url":  {
                                                                   "host":  [
@@ -337,10 +374,32 @@
                                                       "header":  [
                                                                      {
                                                                          "key":  "Content-Type",
+                                                                         "type":  "text",
                                                                          "value":  "application/json"
+                                                                     },
+                                                                     {
+                                                                         "key":  "Authorization",
+                                                                         "type":  "text",
+                                                                         "value":  "Bearer {{token}}"
                                                                      }
                                                                  ]
-                                                  }
+                                                  },
+                                      "name":  "POST /cart",
+                                      "event":  [
+                                                    {
+                                                        "script":  {
+                                                                       "exec":  [
+                                                                                    "const json = pm.response.json();",
+                                                                                    "",
+                                                                                    "if (json.id) {",
+                                                                                    "    pm.collectionVariables.set(\"cartItemId\", json.id);",
+                                                                                    "}"
+                                                                                ],
+                                                                       "type":  "text/javascript"
+                                                                   },
+                                                        "listen":  "test"
+                                                    }
+                                                ]
                                   },
                                   {
                                       "name":  "GET /cart",
@@ -360,7 +419,74 @@
                                                                   "path":  [
                                                                                "cart"
                                                                            ]
-                                                              }
+                                                              },
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Authorization",
+                                                                         "type":  "text",
+                                                                         "value":  "Bearer {{token}}"
+                                                                     }
+                                                                 ]
+                                                  }
+                                  },
+                                  {
+                                      "name":  "PATCH /cart/:id",
+                                      "request":  {
+                                                      "url":  {
+                                                                  "host":  [
+                                                                               "{{baseUrl}}"
+                                                                           ],
+                                                                  "raw":  "{{baseUrl}}/cart/{{cartItemId}}",
+                                                                  "path":  [
+                                                                               "cart",
+                                                                               "{{cartItemId}}"
+                                                                           ]
+                                                              },
+                                                      "method":  "PATCH",
+                                                      "body":  {
+                                                                   "raw":  "{\n  \"quantity\": 3\n}",
+                                                                   "options":  {
+                                                                                   "raw":  {
+                                                                                               "language":  "json"
+                                                                                           }
+                                                                               },
+                                                                   "mode":  "raw"
+                                                               },
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Content-Type",
+                                                                         "type":  "text",
+                                                                         "value":  "application/json"
+                                                                     },
+                                                                     {
+                                                                         "key":  "Authorization",
+                                                                         "type":  "text",
+                                                                         "value":  "Bearer {{token}}"
+                                                                     }
+                                                                 ]
+                                                  }
+                                  },
+                                  {
+                                      "name":  "DELETE /cart/:id",
+                                      "request":  {
+                                                      "method":  "DELETE",
+                                                      "url":  {
+                                                                  "host":  [
+                                                                               "{{baseUrl}}"
+                                                                           ],
+                                                                  "raw":  "{{baseUrl}}/cart/{{cartItemId}}",
+                                                                  "path":  [
+                                                                               "cart",
+                                                                               "{{cartItemId}}"
+                                                                           ]
+                                                              },
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Authorization",
+                                                                         "type":  "text",
+                                                                         "value":  "Bearer {{token}}"
+                                                                     }
+                                                                 ]
                                                   }
                                   }
                               ]
@@ -393,7 +519,13 @@
                                                       "header":  [
                                                                      {
                                                                          "key":  "Content-Type",
+                                                                         "type":  "text",
                                                                          "value":  "application/json"
+                                                                     },
+                                                                     {
+                                                                         "key":  "Authorization",
+                                                                         "type":  "text",
+                                                                         "value":  "Bearer {{token}}"
                                                                      }
                                                                  ]
                                                   }
@@ -416,7 +548,14 @@
                                                                   "path":  [
                                                                                "orders"
                                                                            ]
-                                                              }
+                                                              },
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Authorization",
+                                                                         "type":  "text",
+                                                                         "value":  "Bearer {{token}}"
+                                                                     }
+                                                                 ]
                                                   }
                                   }
                               ]
