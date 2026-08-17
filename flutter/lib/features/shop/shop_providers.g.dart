@@ -6,9 +6,32 @@ part of 'shop_providers.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$productsHash() => r'c3ec6dd126f759dbe39d584bbab4bc42fe4d2c4f';
+String _$productsLocalCacheHash() =>
+    r'd04fb18c62a07cc05b5c65e69636be3a7ce63a3b';
 
-/// See also [products].
+/// See also [productsLocalCache].
+@ProviderFor(productsLocalCache)
+final productsLocalCacheProvider = Provider<ProductsLocalCache>.internal(
+  productsLocalCache,
+  name: r'productsLocalCacheProvider',
+  debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+      ? null
+      : _$productsLocalCacheHash,
+  dependencies: null,
+  allTransitiveDependencies: null,
+);
+
+@Deprecated('Will be removed in 3.0. Use Ref instead')
+// ignore: unused_element
+typedef ProductsLocalCacheRef = ProviderRef<ProductsLocalCache>;
+String _$productsHash() => r'c3116fcc431835e1817f9e92aec806e7193df534';
+
+/// Cache-first against [CachePolicy.productsCatalog]: a fresh-enough cache
+/// is returned with no network call at all; an expired one still wins
+/// over an error if the network fetch that would replace it fails (e.g.
+/// offline) — the catalog should still browse, just possibly stale.
+///
+/// Copied from [products].
 @ProviderFor(products)
 final productsProvider = AutoDisposeFutureProvider<List<Product>>.internal(
   products,
@@ -23,7 +46,7 @@ final productsProvider = AutoDisposeFutureProvider<List<Product>>.internal(
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
 typedef ProductsRef = AutoDisposeFutureProviderRef<List<Product>>;
-String _$productHash() => r'd1d680c072203a581274a35d0969f48177275916';
+String _$productHash() => r'6ce2f26dbc56ab8bc55b6998870863b51da09cad';
 
 /// Copied from Dart SDK
 class _SystemHash {
@@ -46,16 +69,32 @@ class _SystemHash {
   }
 }
 
-/// See also [product].
+/// Network-first (product details can legitimately be fresher than the
+/// list — stock, price), but falls back to the cached catalog entry so a
+/// product reached by tapping an offline-cached list tile still opens.
+///
+/// Copied from [product].
 @ProviderFor(product)
 const productProvider = ProductFamily();
 
-/// See also [product].
+/// Network-first (product details can legitimately be fresher than the
+/// list — stock, price), but falls back to the cached catalog entry so a
+/// product reached by tapping an offline-cached list tile still opens.
+///
+/// Copied from [product].
 class ProductFamily extends Family<AsyncValue<Product>> {
-  /// See also [product].
+  /// Network-first (product details can legitimately be fresher than the
+  /// list — stock, price), but falls back to the cached catalog entry so a
+  /// product reached by tapping an offline-cached list tile still opens.
+  ///
+  /// Copied from [product].
   const ProductFamily();
 
-  /// See also [product].
+  /// Network-first (product details can legitimately be fresher than the
+  /// list — stock, price), but falls back to the cached catalog entry so a
+  /// product reached by tapping an offline-cached list tile still opens.
+  ///
+  /// Copied from [product].
   ProductProvider call(String id) {
     return ProductProvider(id);
   }
@@ -80,9 +119,17 @@ class ProductFamily extends Family<AsyncValue<Product>> {
   String? get name => r'productProvider';
 }
 
-/// See also [product].
+/// Network-first (product details can legitimately be fresher than the
+/// list — stock, price), but falls back to the cached catalog entry so a
+/// product reached by tapping an offline-cached list tile still opens.
+///
+/// Copied from [product].
 class ProductProvider extends AutoDisposeFutureProvider<Product> {
-  /// See also [product].
+  /// Network-first (product details can legitimately be fresher than the
+  /// list — stock, price), but falls back to the cached catalog entry so a
+  /// product reached by tapping an offline-cached list tile still opens.
+  ///
+  /// Copied from [product].
   ProductProvider(String id)
     : this._internal(
         (ref) => product(ref as ProductRef, id),

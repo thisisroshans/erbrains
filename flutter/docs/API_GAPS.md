@@ -35,6 +35,15 @@ These were closed on the backend and wired into the Flutter client:
    `min_spo2` alongside `avg_spo2`. `HealthSummaryPoint.minSpo2` is a
    required field; the History screen shows "Avg X% · Min Y%" from real
    data instead of just the average.
+7. **No offline storage or sync queue** — was the one item under
+   "Explicitly paused" below; now built. See
+   [docs/OFFLINE_SYNC.md](OFFLINE_SYNC.md) for the full design. Short
+   version: every wearable reading is written to a local Hive store the
+   instant it's captured (this is what History reads from — fully
+   offline-capable), and a `SyncManager` drains pending readings to
+   `POST /health/readings` in batches with per-reading retry/backoff,
+   triggered by connectivity changes, app launch/resume, and a periodic
+   timer. Surfaced via a sync banner on every screen.
 
 ## Still open — scope decisions, not backend defects
 
@@ -55,16 +64,8 @@ These were closed on the backend and wired into the Flutter client:
 - **The mock's "client-generated id" dedupe note doesn't match the real
   backend.** Screen 05's copy says "each reading carries a client-generated
   id — the backend rejects duplicates on retry," but the actual
-  implementation dedupes on the `(device_id, reading_timestamp)` unique
-  constraint, not a separate id column. Functionally equivalent for
-  idempotent retries, just a documentation nuance — `HealthReading.localId`
-  exists purely as a local queue/UI identifier and never leaves the device.
-
-## Explicitly paused
-
-- **Local storage + offline sync queue** (SQLite-backed reading store,
-  connectivity-triggered flush to `POST /health/readings`) — paused mid-build
-  per instruction; not resumed since. `lib/features/sync/sync_status_screen.dart`
-  renders the screen 05 shell with an honest empty state instead of
-  fabricated queue data. `sqflite`/`connectivity_plus` are not in
-  `pubspec.yaml` — re-add when this resumes.
+  implementation (now built — see docs/OFFLINE_SYNC.md) dedupes on the
+  `(device_id, reading_timestamp)` unique constraint, not a separate id
+  column. Functionally equivalent for idempotent retries, just a
+  documentation nuance — `HealthReading.localId` exists purely as the
+  local Hive key/queue identifier and never leaves the device.

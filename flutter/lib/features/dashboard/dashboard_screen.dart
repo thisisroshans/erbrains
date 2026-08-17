@@ -110,7 +110,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             ),
             NocturneCard(
               onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const SyncStatusScreen()),
+                MaterialPageRoute(builder: (_) => SyncStatusScreen(userId: widget.userId)),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -124,8 +124,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   ),
                   NocturneTag(
                     label: snapshot != null
-                        ? _syncedLabel(snapshot.timestamp)
-                        : 'Not synced',
+                        ? _lastReadingLabel(snapshot.timestamp)
+                        : 'No readings yet',
                     variant: NocturneTagVariant.outline,
                   ),
                 ],
@@ -150,11 +150,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     return PhosphorIconsRegular.batteryLow;
   }
 
-  static String _syncedLabel(DateTime timestamp) {
+  // Deliberately "last reading," not "synced" — this reflects the local
+  // wearable stream, not backend sync state (that's what SyncBanner /
+  // SyncStatusScreen are for). Conflating the two here would say "Synced
+  // 0s ago" while genuinely offline, which is actively wrong.
+  static String _lastReadingLabel(DateTime timestamp) {
     final diff = DateTime.now().difference(timestamp);
-    if (diff.inSeconds < 60) return 'Synced ${diff.inSeconds}s ago';
-    if (diff.inMinutes < 60) return 'Synced ${diff.inMinutes}m ago';
-    return 'Synced ${diff.inHours}h ago';
+    if (diff.inSeconds < 60) return 'Last reading ${diff.inSeconds}s ago';
+    if (diff.inMinutes < 60) return 'Last reading ${diff.inMinutes}m ago';
+    return 'Last reading ${diff.inHours}h ago';
   }
 }
 

@@ -51,7 +51,15 @@ dependencies:
   # Auth token / lightweight prefs persistence
   shared_preferences: ^2.3.3
 
-  # Client-generated ids for readings (dedupe on retry) + date formatting
+  # Offline engine: local storage (plain Map boxes, no generated
+  # TypeAdapters — avoids a second codegen pipeline alongside
+  # riverpod_generator) + connectivity change detection.
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+  connectivity_plus: ^6.1.0
+
+  # Local ids for readings (queue bookkeeping only — the backend dedupes
+  # on device+timestamp, not a client id) + date formatting
   uuid: ^4.5.1
   intl: ^0.20.1
 

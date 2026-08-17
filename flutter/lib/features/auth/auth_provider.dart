@@ -64,6 +64,10 @@ class Auth extends _$Auth {
 
   Future<void> logout() async {
     await ref.read(tokenStorageProvider).clear();
+    // Full local wipe — every Hive box holds either this account's cached
+    // data or its pending sync queue, neither of which should survive a
+    // switch to a different account on the same device.
+    await ref.read(localDataWiperProvider).wipeAll();
     state = const AuthState(status: AuthStatus.unauthenticated);
   }
 }

@@ -6,7 +6,33 @@ part of 'history_providers.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$healthSummaryHash() => r'74c91d4729682eff2d8dc6d1c3b14b04e2f08b36';
+String _$recentHealthReadingsHash() =>
+    r'e644432007c63bfcb82ec5246f698df8d96c9eda';
+
+/// Recent readings for the device, newest first — read straight from the
+/// local store, not the network. History works fully offline this way,
+/// and reflects readings that haven't synced yet (there's exactly one
+/// device per app session, so no `userId` filter is needed here — that
+/// scoping already happened when the reading was captured).
+///
+/// Copied from [recentHealthReadings].
+@ProviderFor(recentHealthReadings)
+final recentHealthReadingsProvider =
+    AutoDisposeStreamProvider<List<HealthReading>>.internal(
+      recentHealthReadings,
+      name: r'recentHealthReadingsProvider',
+      debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+          ? null
+          : _$recentHealthReadingsHash,
+      dependencies: null,
+      allTransitiveDependencies: null,
+    );
+
+@Deprecated('Will be removed in 3.0. Use Ref instead')
+// ignore: unused_element
+typedef RecentHealthReadingsRef =
+    AutoDisposeStreamProviderRef<List<HealthReading>>;
+String _$healthSummaryHash() => r'43a1439915711424ebffa2f11dad4f27964e81de';
 
 /// Copied from Dart SDK
 class _SystemHash {
@@ -29,25 +55,41 @@ class _SystemHash {
   }
 }
 
-/// See also [healthSummary].
+/// Client-side equivalent of `GET /health/summary`, computed from the
+/// local store (see [HealthReadingLocalStore.summary]) for the same
+/// offline-first reason.
+///
+/// Copied from [healthSummary].
 @ProviderFor(healthSummary)
 const healthSummaryProvider = HealthSummaryFamily();
 
-/// See also [healthSummary].
+/// Client-side equivalent of `GET /health/summary`, computed from the
+/// local store (see [HealthReadingLocalStore.summary]) for the same
+/// offline-first reason.
+///
+/// Copied from [healthSummary].
 class HealthSummaryFamily extends Family<AsyncValue<List<HealthSummaryPoint>>> {
-  /// See also [healthSummary].
+  /// Client-side equivalent of `GET /health/summary`, computed from the
+  /// local store (see [HealthReadingLocalStore.summary]) for the same
+  /// offline-first reason.
+  ///
+  /// Copied from [healthSummary].
   const HealthSummaryFamily();
 
-  /// See also [healthSummary].
-  HealthSummaryProvider call(String userId, String period) {
-    return HealthSummaryProvider(userId, period);
+  /// Client-side equivalent of `GET /health/summary`, computed from the
+  /// local store (see [HealthReadingLocalStore.summary]) for the same
+  /// offline-first reason.
+  ///
+  /// Copied from [healthSummary].
+  HealthSummaryProvider call(String period) {
+    return HealthSummaryProvider(period);
   }
 
   @override
   HealthSummaryProvider getProviderOverride(
     covariant HealthSummaryProvider provider,
   ) {
-    return call(provider.userId, provider.period);
+    return call(provider.period);
   }
 
   static const Iterable<ProviderOrFamily>? _dependencies = null;
@@ -65,13 +107,21 @@ class HealthSummaryFamily extends Family<AsyncValue<List<HealthSummaryPoint>>> {
   String? get name => r'healthSummaryProvider';
 }
 
-/// See also [healthSummary].
+/// Client-side equivalent of `GET /health/summary`, computed from the
+/// local store (see [HealthReadingLocalStore.summary]) for the same
+/// offline-first reason.
+///
+/// Copied from [healthSummary].
 class HealthSummaryProvider
-    extends AutoDisposeFutureProvider<List<HealthSummaryPoint>> {
-  /// See also [healthSummary].
-  HealthSummaryProvider(String userId, String period)
+    extends AutoDisposeStreamProvider<List<HealthSummaryPoint>> {
+  /// Client-side equivalent of `GET /health/summary`, computed from the
+  /// local store (see [HealthReadingLocalStore.summary]) for the same
+  /// offline-first reason.
+  ///
+  /// Copied from [healthSummary].
+  HealthSummaryProvider(String period)
     : this._internal(
-        (ref) => healthSummary(ref as HealthSummaryRef, userId, period),
+        (ref) => healthSummary(ref as HealthSummaryRef, period),
         from: healthSummaryProvider,
         name: r'healthSummaryProvider',
         debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
@@ -80,7 +130,6 @@ class HealthSummaryProvider
         dependencies: HealthSummaryFamily._dependencies,
         allTransitiveDependencies:
             HealthSummaryFamily._allTransitiveDependencies,
-        userId: userId,
         period: period,
       );
 
@@ -91,17 +140,14 @@ class HealthSummaryProvider
     required super.allTransitiveDependencies,
     required super.debugGetCreateSourceHash,
     required super.from,
-    required this.userId,
     required this.period,
   }) : super.internal();
 
-  final String userId;
   final String period;
 
   @override
   Override overrideWith(
-    FutureOr<List<HealthSummaryPoint>> Function(HealthSummaryRef provider)
-    create,
+    Stream<List<HealthSummaryPoint>> Function(HealthSummaryRef provider) create,
   ) {
     return ProviderOverride(
       origin: this,
@@ -112,28 +158,24 @@ class HealthSummaryProvider
         dependencies: null,
         allTransitiveDependencies: null,
         debugGetCreateSourceHash: null,
-        userId: userId,
         period: period,
       ),
     );
   }
 
   @override
-  AutoDisposeFutureProviderElement<List<HealthSummaryPoint>> createElement() {
+  AutoDisposeStreamProviderElement<List<HealthSummaryPoint>> createElement() {
     return _HealthSummaryProviderElement(this);
   }
 
   @override
   bool operator ==(Object other) {
-    return other is HealthSummaryProvider &&
-        other.userId == userId &&
-        other.period == period;
+    return other is HealthSummaryProvider && other.period == period;
   }
 
   @override
   int get hashCode {
     var hash = _SystemHash.combine(0, runtimeType.hashCode);
-    hash = _SystemHash.combine(hash, userId.hashCode);
     hash = _SystemHash.combine(hash, period.hashCode);
 
     return _SystemHash.finish(hash);
@@ -143,172 +185,18 @@ class HealthSummaryProvider
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
 mixin HealthSummaryRef
-    on AutoDisposeFutureProviderRef<List<HealthSummaryPoint>> {
-  /// The parameter `userId` of this provider.
-  String get userId;
-
+    on AutoDisposeStreamProviderRef<List<HealthSummaryPoint>> {
   /// The parameter `period` of this provider.
   String get period;
 }
 
 class _HealthSummaryProviderElement
-    extends AutoDisposeFutureProviderElement<List<HealthSummaryPoint>>
+    extends AutoDisposeStreamProviderElement<List<HealthSummaryPoint>>
     with HealthSummaryRef {
   _HealthSummaryProviderElement(super.provider);
 
   @override
-  String get userId => (origin as HealthSummaryProvider).userId;
-  @override
   String get period => (origin as HealthSummaryProvider).period;
-}
-
-String _$recentHealthReadingsHash() =>
-    r'49ae863e8c3ffdf08254b2f8624a87ddb56f6982';
-
-/// The most recent readings, paged server-side — matches screen 04's note
-/// ("Showing latest 20 of 1,240 readings — older data loads in paged
-/// chunks, never all at once").
-///
-/// Copied from [recentHealthReadings].
-@ProviderFor(recentHealthReadings)
-const recentHealthReadingsProvider = RecentHealthReadingsFamily();
-
-/// The most recent readings, paged server-side — matches screen 04's note
-/// ("Showing latest 20 of 1,240 readings — older data loads in paged
-/// chunks, never all at once").
-///
-/// Copied from [recentHealthReadings].
-class RecentHealthReadingsFamily
-    extends Family<AsyncValue<List<HealthReading>>> {
-  /// The most recent readings, paged server-side — matches screen 04's note
-  /// ("Showing latest 20 of 1,240 readings — older data loads in paged
-  /// chunks, never all at once").
-  ///
-  /// Copied from [recentHealthReadings].
-  const RecentHealthReadingsFamily();
-
-  /// The most recent readings, paged server-side — matches screen 04's note
-  /// ("Showing latest 20 of 1,240 readings — older data loads in paged
-  /// chunks, never all at once").
-  ///
-  /// Copied from [recentHealthReadings].
-  RecentHealthReadingsProvider call(String userId) {
-    return RecentHealthReadingsProvider(userId);
-  }
-
-  @override
-  RecentHealthReadingsProvider getProviderOverride(
-    covariant RecentHealthReadingsProvider provider,
-  ) {
-    return call(provider.userId);
-  }
-
-  static const Iterable<ProviderOrFamily>? _dependencies = null;
-
-  @override
-  Iterable<ProviderOrFamily>? get dependencies => _dependencies;
-
-  static const Iterable<ProviderOrFamily>? _allTransitiveDependencies = null;
-
-  @override
-  Iterable<ProviderOrFamily>? get allTransitiveDependencies =>
-      _allTransitiveDependencies;
-
-  @override
-  String? get name => r'recentHealthReadingsProvider';
-}
-
-/// The most recent readings, paged server-side — matches screen 04's note
-/// ("Showing latest 20 of 1,240 readings — older data loads in paged
-/// chunks, never all at once").
-///
-/// Copied from [recentHealthReadings].
-class RecentHealthReadingsProvider
-    extends AutoDisposeFutureProvider<List<HealthReading>> {
-  /// The most recent readings, paged server-side — matches screen 04's note
-  /// ("Showing latest 20 of 1,240 readings — older data loads in paged
-  /// chunks, never all at once").
-  ///
-  /// Copied from [recentHealthReadings].
-  RecentHealthReadingsProvider(String userId)
-    : this._internal(
-        (ref) => recentHealthReadings(ref as RecentHealthReadingsRef, userId),
-        from: recentHealthReadingsProvider,
-        name: r'recentHealthReadingsProvider',
-        debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
-            ? null
-            : _$recentHealthReadingsHash,
-        dependencies: RecentHealthReadingsFamily._dependencies,
-        allTransitiveDependencies:
-            RecentHealthReadingsFamily._allTransitiveDependencies,
-        userId: userId,
-      );
-
-  RecentHealthReadingsProvider._internal(
-    super._createNotifier, {
-    required super.name,
-    required super.dependencies,
-    required super.allTransitiveDependencies,
-    required super.debugGetCreateSourceHash,
-    required super.from,
-    required this.userId,
-  }) : super.internal();
-
-  final String userId;
-
-  @override
-  Override overrideWith(
-    FutureOr<List<HealthReading>> Function(RecentHealthReadingsRef provider)
-    create,
-  ) {
-    return ProviderOverride(
-      origin: this,
-      override: RecentHealthReadingsProvider._internal(
-        (ref) => create(ref as RecentHealthReadingsRef),
-        from: from,
-        name: null,
-        dependencies: null,
-        allTransitiveDependencies: null,
-        debugGetCreateSourceHash: null,
-        userId: userId,
-      ),
-    );
-  }
-
-  @override
-  AutoDisposeFutureProviderElement<List<HealthReading>> createElement() {
-    return _RecentHealthReadingsProviderElement(this);
-  }
-
-  @override
-  bool operator ==(Object other) {
-    return other is RecentHealthReadingsProvider && other.userId == userId;
-  }
-
-  @override
-  int get hashCode {
-    var hash = _SystemHash.combine(0, runtimeType.hashCode);
-    hash = _SystemHash.combine(hash, userId.hashCode);
-
-    return _SystemHash.finish(hash);
-  }
-}
-
-@Deprecated('Will be removed in 3.0. Use Ref instead')
-// ignore: unused_element
-mixin RecentHealthReadingsRef
-    on AutoDisposeFutureProviderRef<List<HealthReading>> {
-  /// The parameter `userId` of this provider.
-  String get userId;
-}
-
-class _RecentHealthReadingsProviderElement
-    extends AutoDisposeFutureProviderElement<List<HealthReading>>
-    with RecentHealthReadingsRef {
-  _RecentHealthReadingsProviderElement(super.provider);
-
-  @override
-  String get userId => (origin as RecentHealthReadingsProvider).userId;
 }
 
 // ignore_for_file: type=lint

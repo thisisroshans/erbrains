@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/health_sync/health_sync_providers.dart';
 import '../../core/models/health_summary.dart';
 import '../../design_system/nocturne.dart';
 import 'history_providers.dart';
@@ -24,17 +25,15 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final summaryAsync = ref.watch(
-      healthSummaryProvider(widget.userId, _period.name),
-    );
-    final recentAsync = ref.watch(recentHealthReadingsProvider(widget.userId));
+    final summaryAsync = ref.watch(healthSummaryProvider(_period.name));
+    final recentAsync = ref.watch(recentHealthReadingsProvider);
 
     return SafeArea(
       child: RefreshIndicator(
-        onRefresh: () async {
-          ref.invalidate(healthSummaryProvider(widget.userId, _period.name));
-          ref.invalidate(recentHealthReadingsProvider(widget.userId));
-        },
+        // Both providers already stream live from the local store — pull-
+        // to-refresh here means "try to sync now," not "refetch," since
+        // there's nothing staler than what's already on screen.
+        onRefresh: () => ref.read(syncManagerProvider(widget.userId)).drain(),
         child: ListView(
           padding: const EdgeInsets.all(20),
           children: [
@@ -86,8 +85,8 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Showing the latest 20 readings — older data loads in paged '
-              'chunks, never all at once.',
+              'Showing the latest 20 of everything stored on this device — '
+              'readings are kept locally whether or not they\'ve synced yet.',
               style: NocturneType.micro,
             ),
           ],

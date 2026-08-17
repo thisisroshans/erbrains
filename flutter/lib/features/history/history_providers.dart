@@ -1,35 +1,43 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
+import '../../core/health_sync/health_sync_providers.dart';
 import '../../core/models/health_reading.dart';
 import '../../core/models/health_summary.dart';
-import '../../core/providers/core_providers.dart';
+import '../../core/providers/wearable_providers.dart';
 
 part 'history_providers.g.dart';
 
+/// Recent readings for the device, newest first — read straight from the
+/// local store, not the network. History works fully offline this way,
+/// and reflects readings that haven't synced yet (there's exactly one
+/// device per app session, so no `userId` filter is needed here — that
+/// scoping already happened when the reading was captured).
 @riverpod
-Future<List<HealthSummaryPoint>> healthSummary(
-  Ref ref,
-  String userId,
-  String period,
-) async {
-  final api = ref.watch(apiClientProvider);
-  final rows = await api.getHealthSummary(userId: userId, period: period);
-  return rows
-      .map((e) => HealthSummaryPoint.fromJson(e as Map<String, dynamic>))
-      .toList();
+Stream<List<HealthReading>> recentHealthReadings(Ref ref) async* {
+  final store = ref.watch(healthReadingLocalStoreProvider);
+  final deviceId = ref.watch(wearableServiceProvider).deviceId;
+
+  List<HealthReading> read() => store.recent(deviceId: deviceId);
+
+  yield read();
+  await for (final _ in store.watch()) {
+    yield read();
+  }
 }
 
-/// The most recent readings, paged server-side — matches screen 04's note
-/// ("Showing latest 20 of 1,240 readings — older data loads in paged
-/// chunks, never all at once").
+/// Client-side equivalent of `GET /health/summary`, computed from the
+/// local store (see [HealthReadingLocalStore.summary]) for the same
+/// offline-first reason.
 @riverpod
-Future<List<HealthReading>> recentHealthReadings(Ref ref, String userId) async {
-  final api = ref.watch(apiClientProvider);
-  final json = await api.getHealthReadings(userId: userId, page: 1, limit: 20);
-  final rows = json['data'] as List<dynamic>;
-  return rows.map((e) {
-    final row = e as Map<String, dynamic>;
-    return HealthReading.fromApiJson(row, row['id'] as String);
-  }).toList();
+Stream<List<HealthSummaryPoint>> healthSummary(Ref ref, String period) async* {
+  final store = ref.watch(healthReadingLocalStoreProvider);
+  final deviceId = ref.watch(wearableServiceProvider).deviceId;
+
+  List<HealthSummaryPoint> compute() => store.summary(deviceId: deviceId, period: period);
+
+  yield compute();
+  await for (final _ in store.watch()) {
+    yield compute();
+  }
 }

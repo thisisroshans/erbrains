@@ -30,4 +30,15 @@ class Product {
       imageUrl: json['image_url'] as String?,
     );
   }
+
+  /// For the Hive cache (see ProductsLocalCache) — same shape as
+  /// [fromJson] expects, not a wire format.
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'description': description,
+        'price': price,
+        'stock': stock,
+        'image_url': imageUrl,
+      };
 }
