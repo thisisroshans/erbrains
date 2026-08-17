@@ -1,3 +1,74 @@
+# Wearable Health & Shopping API
+
+Backend for the *Wearable Health & Shopping* mobile app (ERBrains take-home assignment).
+Node.js + Express + PostgreSQL.
+
+## Architecture
+
+Plain layered Express app, no framework magic:
+
+```
+server.js   -> loads env vars, starts the HTTP listener
+app.js      -> Express app: middleware + all route handlers (exported, no listen())
+auth.routes.js -> /auth/* routes, mounted on app.js
+db.js       -> pg Pool wrapper (query + transaction helper)
+database/   -> schema.sql, seed.sql and the Node scripts that run them
+tests/      -> Jest + Supertest, route logic tested against a mocked db module
+```
+
+`app.js` is separated from `server.js` specifically so it can be `require`d by tests
+without opening a real port or needing a live database.
+
+## Setup
+
+```bash
+npm install
+cp .env.example .env   # or edit the existing .env — see variables below
+npm run db:migrate     # creates tables (idempotent, safe to re-run)
+npm run db:seed        # inserts sample data (see below)
+npm start               # http://localhost:3000
+```
+
+`npm run db:seed` ([`database/seed.js`](database/seed.js)) populates enough data to exercise the whole
+API immediately, without placing calls by hand first:
+
+- 5 sample products ([`database/seed.sql`](database/seed.sql))
+- a demo user — `demo@erbrains.io` / `password123` — log in with `POST /auth/login`
+- a demo device (`FITRING-001`) owned by that user
+- ~3 days of health readings at 15-minute intervals, so `/health/readings` and
+  `/health/summary` have something to return right away
+- one completed order, so `/orders` isn't empty on first call
+
+It's idempotent — re-running it won't duplicate the user, device, readings, or order.
+
+Environment variables (`.env`):
+
+| Variable      | Purpose                        |
+|---------------|---------------------------------|
+| `PORT`        | HTTP port (default 3000)        |
+| `DB_USER`     | PostgreSQL user                 |
+| `DB_HOST`     | PostgreSQL host                 |
+| `DB_NAME`     | Database name                   |
+| `DB_PASSWORD` | PostgreSQL password              |
+| `DB_PORT`     | PostgreSQL port (default 5432)  |
+
+## Tests
+
+```bash
+npm test
+```
+
+Route handlers are tested against a mocked `db` module (no live database required),
+covering the areas most likely to cause data loss or incorrect business results:
+
+- **Health readings**: request validation, and duplicate-skip counting for the
+  `ON CONFLICT (device_id, reading_timestamp) DO NOTHING` sync path.
+- **Cart**: validation, and quantity merging via `ON CONFLICT (user_id, product_id)`.
+- **Orders**: rejecting checkout on an empty cart, and the full checkout transaction
+  (cart snapshot → order + order_items → cart cleared) via the mocked `db.transaction`.
+
+## Database
+
 ```mermaid
 erDiagram
     users ||--o{ devices : owns
@@ -68,3 +139,73 @@ erDiagram
         DECIMAL price_at_purchase
     }
 ```
+
+The runnable version of this schema is [`database/schema.sql`](database/schema.sql). Notable
+constraints beyond the diagram:
+
+- `health_readings` has `UNIQUE (device_id, reading_timestamp)` — this is what makes
+  `POST /health/readings` idempotent: re-uploading the same reading after a failed sync
+  is a no-op instead of a duplicate row.
+- `cart_items` has `UNIQUE (user_id, product_id)` — `POST /cart` upserts onto this,
+  incrementing quantity instead of creating a second line item for the same product.
+- Foreign keys cascade on delete (e.g. deleting a user cleans up their devices, readings,
+  cart items and orders).
+
+## API Documentation
+
+All endpoints accept/return JSON. Errors are `{ "error": "..." }` with a 4xx/5xx status.
+
+### Auth
+| Method | Path | Body | Notes |
+|---|---|---|---|
+| POST | `/auth/login` | `{ email, password }` | Creates the user on first login (local-dev auth), otherwise verifies the password hash. Returns `{ token, user }`. |
+
+### Devices
+| Method | Path | Body / Query | Notes |
+|---|---|---|---|
+| POST | `/devices` | `{ deviceId, name, userId }` | Upserts by `deviceId`, marks it `connected`. |
+| GET | `/devices?userId=` | — | Lists devices for a user. |
+
+### Health data
+| Method | Path | Body / Query | Notes |
+|---|---|---|---|
+| POST | `/health/readings` | `{ userId, readings: [{ deviceId, heartRate, spo2, steps, timestamp }] }` | Batch upload. Returns `{ synced, duplicatesSkipped }`. Safe to retry — duplicates are skipped via the DB unique constraint, not client-side de-duplication. |
+| GET | `/health/readings?userId=&page=&limit=` | — | Paginated, `limit` capped at 100 so the UI never has to render an unbounded page. |
+| GET | `/health/summary?userId=&period=daily\|weekly` | — | Aggregated min/max/avg over the last 7 days, bucketed by day or week — this is what backs the History screen's charts instead of shipping raw rows to the client. |
+
+### Shopping
+| Method | Path | Body / Query | Notes |
+|---|---|---|---|
+| GET | `/products` | — | Full catalog. |
+| GET | `/products/:id` | — | 404 if not found. |
+| POST | `/cart` | `{ userId, productId, quantity }` | Adds or increments a line item. |
+| GET | `/cart?userId=` | — | Items + computed `totalAmount`. |
+| POST | `/orders` | `{ userId }` | Converts the current cart into an order inside a single DB transaction (snapshot prices into `order_items`, then empty the cart). 400 if the cart is empty. |
+| GET | `/orders?userId=` | — | Order history. |
+
+A ready-to-import collection is in [`Wearable-Health-API.postman_collection.json`](Wearable-Health-API.postman_collection.json)
+(regenerate with `generate-postman.ps1`).
+
+## Error handling
+
+- **Validation** (missing/invalid fields): `400` before any DB call is made.
+- **Foreign key violations** (Postgres code `23503`, e.g. unknown `userId`): mapped to `400`.
+- **Duplicate health readings**: not an error — `ON CONFLICT DO NOTHING` + a `duplicatesSkipped`
+  count in the response, so a retried sync batch is idempotent.
+- **Checkout on an empty cart**: `400` with `"Cart is empty"`, raised before the transaction
+  commits anything.
+- **Unexpected/DB errors**: `500` with a generic message; the real error is logged server-side,
+  never leaked to the client.
+- **Auth failure**: wrong password on an existing email returns `401`.
+
+## Major technical decisions
+
+- **No ORM.** Raw parameterized SQL via `pg` — the query surface is small enough that an ORM
+  would add indirection without buying much, and it keeps the upsert/`ON CONFLICT` logic
+  (which is load-bearing for duplicate prevention) explicit and easy to reason about.
+- **Transactions for checkout only.** `POST /orders` is the one place multiple writes must
+  succeed or fail together (order + order_items + cart clear); everything else is single-statement.
+- **Mock auth, not JWT.** The assignment allows mock authentication; the token is an opaque
+  base64 blob, not meant to be a production auth scheme. Swapping in signed JWTs later only
+  touches `auth.routes.js`.
+- **`app.js` / `server.js` split** exists purely for testability (see Architecture above).

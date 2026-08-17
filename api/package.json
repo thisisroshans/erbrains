@@ -1,10 +1,14 @@
 {
-  "name": "api",
+  "name": "wearable-health-api",
   "version": "1.0.0",
-  "description": "```mermaid\r erDiagram\r     users ||--o{ devices : owns\r     users ||--o{ health_readings : generates\r     users ||--o{ cart_items : adds_to\r     users ||--o{ orders : places",
-  "main": "index.js",
+  "description": "Backend API for the Wearable Health & Shopping mobile app (auth, devices, health readings, products, cart, orders).",
+  "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "db:migrate": "node database/migrate.js",
+    "db:seed": "node database/seed.js",
+    "test": "jest"
   },
   "keywords": [],
   "author": "",
@@ -15,5 +19,9 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "jest": "^30.4.2",
+    "supertest": "^7.2.2"
   }
 }
