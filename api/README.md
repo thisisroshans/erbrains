@@ -5,17 +5,44 @@ Node.js + Express + PostgreSQL.
 
 ## Architecture
 
-Plain layered Express app, no framework magic:
+**MVC**, applied plainly — no framework magic, no layer that isn't earning
+its keep at this size:
 
 ```
 server.js       -> loads env vars, starts the HTTP listener
-app.js          -> Express app: middleware + all route handlers (exported, no listen())
-auth.routes.js  -> /auth/* routes, mounted on app.js
+app.js          -> Express app: middleware + route mounting (exported, no listen())
+routes/         -> thin wiring only — path -> controller function, nothing else
+controllers/    -> Model  (Controller = HTTP concern: parse req, validate,
+                    pick a status code, call the model, shape the response)
+models/         -> Model layer — one file per resource, owns all SQL for
+                    that resource. Never touches req/res.
 middleware/     -> auth.js: verifies the bearer token and exposes req.auth
-db.js           -> pg Pool wrapper (query + transaction helper)
+utils/          -> small stateless helpers shared across layers (password.js)
+db.js           -> pg Pool wrapper (query + transaction helper) — the only
+                    file that talks to `pg` directly; every model goes through it
 database/       -> schema.sql, seed.sql and the Node scripts that run them
 tests/          -> Jest + Supertest, route logic tested against a mocked db module
 ```
+
+There's no "View" layer in the template-rendering sense — this is a JSON
+API, so the controller's `res.json(...)` call **is** the view, same as any
+REST service following MVC. A request flows in one direction only:
+`routes → controllers → models → db.js` — a model never calls a
+controller, and a controller never runs SQL directly. That rule is what
+keeps `models/*.js` reusable and independently testable in principle
+(today they're exercised indirectly through the controller tests, via the
+mocked `db` module).
+
+**Why this split and not a heavier one** (e.g. a services layer between
+controllers and models, or repository interfaces): every controller
+action here is *one* HTTP request mapped to *one* piece of business logic,
+and that logic already lives naturally in the model that owns the SQL for
+it (see `order.model.js`'s `createFromCart` — the checkout transaction is
+"business logic," and it's exactly as much model code as fetching a row
+is). Adding a services layer would mean most service methods forward
+straight through to a model method with no logic of their own — the kind
+of indirection the assignment's own "avoid unnecessary complexity"
+guidance is warning against.
 
 `app.js` is separated from `server.js` specifically so it can be `require`d by tests
 without opening a real port or needing a live database.
@@ -240,13 +267,19 @@ populates the collection's `{{token}}` and `{{userId}}` variables that every oth
 - **Mock auth, not JWT.** The assignment allows mock authentication; the token is an opaque
   base64 blob, not meant to be a production auth scheme. `middleware/auth.js` decodes and
   trusts it (there's no signature to verify) — swapping in signed JWTs later only touches
-  that one file plus `auth.routes.js`; no route handler changes.
-- **Ownership checks live in the route handlers (`ensureSelf`), not just the middleware.**
-  `requireAuth` only proves *who's asking*; each handler still decides whether that identity
-  is allowed to touch the specific `userId`/row in the request. Keeping that explicit per
-  route (rather than inferring it generically) is what makes `PATCH`/`DELETE /cart/:id`
-  scope their `WHERE` clause to `user_id = req.auth.userId` instead of trusting `:id` alone.
+  that one file plus `auth.controller.js`; no route or model changes.
+- **Ownership checks live in the controllers (`ensureSelf`), not just the middleware.**
+  `requireAuth` only proves *who's asking*; each controller action still decides whether
+  that identity is allowed to touch the specific `userId`/row in the request. Keeping that
+  explicit per action (rather than inferring it generically) is what makes
+  `PATCH`/`DELETE /cart/:id` scope their `WHERE` clause (in `cart.model.js`) to
+  `user_id = req.auth.userId` instead of trusting `:id` alone.
 - **`app.js` / `server.js` split** exists purely for testability (see Architecture above).
+- **models/controllers/routes over one flat `app.js`.** The route handlers started inline in
+  `app.js`; moved to explicit MVC layers so each piece is independently readable/testable —
+  `models/*.js` never sees an HTTP request, `controllers/*.js` never writes SQL. Pure refactor:
+  every SQL string, status code and response shape is unchanged, which is why the existing
+  33 tests needed zero edits.
 - **`products.image_url` points at placeholder images** (`placehold.co`), not real product
   photography — there isn't any for this project. Swap the seed data for real asset URLs
   whenever it exists; no schema change needed.

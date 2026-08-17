@@ -2,8 +2,8 @@ require("dotenv").config();
 
 const fs = require("fs");
 const path = require("path");
-const crypto = require("crypto");
 const { Pool } = require("pg");
+const { hashPassword } = require("../utils/password");
 
 const pool = new Pool({
     user: process.env.DB_USER,
@@ -17,11 +17,6 @@ const DEMO_EMAIL = "demo@erbrains.io";
 const DEMO_PASSWORD = "password123";
 const DEMO_NAME = "Jordan Lee";
 const DEMO_DEVICE_ID = "FITRING-001";
-
-// Must match the hashing in auth.routes.js so the demo user can actually log in.
-function hashPassword(password) {
-    return crypto.createHash("sha256").update(String(password)).digest("hex");
-}
 
 async function seedProducts() {
     const sql = fs.readFileSync(path.join(__dirname, "seed.sql"), "utf8");

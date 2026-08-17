@@ -1,8 +1,5 @@
-﻿const express = require("express");
-const crypto = require("crypto");
-const db = require("./db");
-
-const router = express.Router();
+const userModel = require("../models/user.model");
+const { hashPassword } = require("../utils/password");
 
 /**
  * POST /auth/login
@@ -14,11 +11,10 @@ const router = express.Router();
  * - Verifies password for existing users
  * - Returns a mock auth token
  */
-router.post("/login", async (req, res) => {
+async function login(req, res) {
     try {
         const { email, password, name } = req.body;
 
-        // Validate required fields
         if (!email || !password) {
             return res.status(400).json({
                 error: "Email and password are required",
@@ -27,56 +23,26 @@ router.post("/login", async (req, res) => {
 
         const normalizedEmail = String(email).trim().toLowerCase();
 
-        // Find existing user
-        let result = await db.query(
-            `
-            SELECT id, email, name, password_hash
-            FROM users
-            WHERE LOWER(email) = $1
-            LIMIT 1
-            `,
-            [normalizedEmail]
-        );
-
-        let user;
+        let user = await userModel.findByEmail(normalizedEmail);
 
         // --------------------------------------------------
         // User does not exist -> create user automatically
         // --------------------------------------------------
-        if (result.rows.length === 0) {
-            const passwordHash = crypto
-                .createHash("sha256")
-                .update(String(password))
-                .digest("hex");
-
-            result = await db.query(
-                `
-                INSERT INTO users (email, password_hash, name)
-                VALUES ($1, $2, $3)
-                RETURNING id, email, name
-                `,
-                [normalizedEmail, passwordHash, name ? String(name).trim() : null]
-            );
-
-            user = result.rows[0];
+        if (!user) {
+            user = await userModel.create({
+                email: normalizedEmail,
+                passwordHash: hashPassword(password),
+                name: name ? String(name).trim() : null,
+            });
         }
 
         // --------------------------------------------------
         // User exists -> verify password
         // --------------------------------------------------
-        else {
-            user = result.rows[0];
-
-            const passwordHash = crypto
-                .createHash("sha256")
-                .update(String(password))
-                .digest("hex");
-
-            if (user.password_hash !== passwordHash) {
-                return res.status(401).json({
-                    error: "Invalid email or password",
-                });
-            }
+        else if (user.password_hash !== hashPassword(password)) {
+            return res.status(401).json({
+                error: "Invalid email or password",
+            });
         }
 
         // --------------------------------------------------
@@ -92,9 +58,6 @@ router.post("/login", async (req, res) => {
             .from(JSON.stringify(tokenPayload))
             .toString("base64url");
 
-        // --------------------------------------------------
-        // Successful response
-        // --------------------------------------------------
         return res.status(200).json({
             token,
             user: {
@@ -111,6 +74,6 @@ router.post("/login", async (req, res) => {
             error: "Internal server error",
         });
     }
-});
+}
 
-module.exports = router;
+module.exports = { login };
