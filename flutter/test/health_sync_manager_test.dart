@@ -1,8 +1,8 @@
 import 'dart:io';
 
+import 'package:fitring/core/domain/entities/health_reading.dart';
 import 'package:fitring/core/health_sync/health_reading_local_store.dart';
 import 'package:fitring/core/health_sync/sync_manager.dart';
-import 'package:fitring/core/models/health_reading.dart';
 import 'package:fitring/core/offline/hive_boxes.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';

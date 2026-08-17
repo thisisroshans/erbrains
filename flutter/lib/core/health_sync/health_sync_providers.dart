@@ -2,7 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../offline/connectivity_monitor.dart';
-import '../providers/core_providers.dart';
+import '../providers/datasource_providers.dart';
+import '../providers/repository_providers.dart';
 import '../providers/wearable_providers.dart';
 import 'health_reading_local_store.dart';
 import 'health_sync_engine.dart';
@@ -23,12 +24,13 @@ ConnectivityMonitor connectivityMonitor(Ref ref) {
 @Riverpod(keepAlive: true)
 SyncManager syncManager(Ref ref, String userId) {
   final api = ref.watch(apiClientProvider);
+  final deviceRepository = ref.watch(deviceRepositoryProvider);
   final store = ref.watch(healthReadingLocalStoreProvider);
   final wearable = ref.watch(wearableServiceProvider);
 
   return SyncManager(
     store: store,
-    registerDevice: () => api.registerDevice(
+    registerDevice: () => deviceRepository.register(
       deviceId: wearable.deviceId,
       name: 'FitRing Wearable',
       userId: userId,

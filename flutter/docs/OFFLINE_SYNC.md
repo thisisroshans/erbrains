@@ -18,7 +18,7 @@ queued" below.
 - **`CachePolicy` consultation** — cache-first, applied to the one other
   resource worth it: the product catalog (`GET /products`), which behaves
   like the reference philosophy's "near-static reference data" case. See
-  `ProductsLocalCache` / `shop_providers.dart`.
+  `ProductsLocalCache` / `shop_controller.dart`.
 - **`ConnectivityMonitor`** — thin wrapper over `connectivity_plus`
   exposing a current snapshot and an offline→online transition stream.
 - **`SyncManager`** — drains pending readings to `POST /health/readings`
@@ -40,7 +40,7 @@ queued" below.
   restored) / Discard (permanent — a real gap in that period's history,
   not a display filter). Screen 05 (`SyncStatusScreen`) shows the same
   state as a dedicated page.
-- **History is fully offline** — `history_providers.dart` reads recent
+- **History is fully offline** — `history_controller.dart` reads recent
   readings and computes daily/weekly summaries straight from the local
   store (`HealthReadingLocalStore.summary`, a client-side port of the
   backend's `GET /health/summary` SQL), not the network. It updates live
@@ -151,7 +151,7 @@ documented option but nothing in this app currently uses it — there's no
 resource here with the "show it now, silently refresh in the background"
 shape the reference philosophy's profile/billing/plan resources had. Left
 in as the honest general-purpose primitive rather than deleted, since
-`CacheStrategy.cacheFirst`'s implementation (in `shop_providers.dart`)
+`CacheStrategy.cacheFirst`'s implementation (in `shop_controller.dart`)
 would extend to it trivially if a future resource needs it — but it is
 **not wired to anything today**, which is exactly the kind of claim this
 doc exists to keep honest.

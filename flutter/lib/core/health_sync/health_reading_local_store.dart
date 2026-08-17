@@ -1,7 +1,7 @@
 import 'package:hive_flutter/hive_flutter.dart';
 
-import '../models/health_reading.dart';
-import '../models/health_summary.dart';
+import '../domain/entities/health_reading.dart';
+import '../domain/entities/health_summary.dart';
 import '../offline/hive_boxes.dart';
 
 /// The device's local health-data store — this IS the offline copy the

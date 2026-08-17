@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'design_system/nocturne_theme.dart';
-import 'features/auth/auth_gate.dart';
+import 'features/auth/presentation/screens/auth_gate.dart';
 
 class FitRingApp extends StatelessWidget {
   const FitRingApp({super.key});

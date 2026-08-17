@@ -1,4 +1,4 @@
-import '../models/health_reading.dart';
+import '../domain/entities/health_reading.dart';
 import 'health_reading_local_store.dart';
 
 /// Drains [HealthReadingLocalStore]'s pending readings to the backend in

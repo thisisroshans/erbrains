@@ -48,7 +48,7 @@ class MockWearableService implements WearableService {
   @override
   Stream<ReconnectStatus?> get reconnectStatus => _reconnectController.stream;
 
-  void _setState(WearableConnectionState state) {
+  void _emitConnectionState(WearableConnectionState state) {
     _state = state;
     _connectionController.add(state);
   }
@@ -60,10 +60,10 @@ class MockWearableService implements WearableService {
       return;
     }
     _cancelRetry();
-    _setState(WearableConnectionState.connecting);
+    _emitConnectionState(WearableConnectionState.connecting);
     await Future.delayed(const Duration(milliseconds: 800));
     _attempt = 0;
-    _setState(WearableConnectionState.connected);
+    _emitConnectionState(WearableConnectionState.connected);
     _startReadingsLoop();
   }
 
@@ -72,7 +72,7 @@ class MockWearableService implements WearableService {
     _stopReadingsLoop();
     _cancelRetry();
     _reconnectController.add(null);
-    _setState(WearableConnectionState.disconnected);
+    _emitConnectionState(WearableConnectionState.disconnected);
   }
 
   @override
@@ -80,10 +80,10 @@ class MockWearableService implements WearableService {
     _cancelRetry();
     _attempt = 0;
     _reconnectController.add(null);
-    _setState(WearableConnectionState.connecting);
+    _emitConnectionState(WearableConnectionState.connecting);
     await Future.delayed(const Duration(milliseconds: 600));
     _attempt = 0;
-    _setState(WearableConnectionState.connected);
+    _emitConnectionState(WearableConnectionState.connected);
     _startReadingsLoop();
   }
 
@@ -99,11 +99,11 @@ class MockWearableService implements WearableService {
   void _scheduleReconnect() {
     if (_attempt >= _backoffSeconds.length) {
       _reconnectController.add(null);
-      _setState(WearableConnectionState.connectionFailed);
+      _emitConnectionState(WearableConnectionState.connectionFailed);
       return;
     }
 
-    _setState(WearableConnectionState.reconnecting);
+    _emitConnectionState(WearableConnectionState.reconnecting);
     final delaySeconds = _backoffSeconds[_attempt];
     _attempt++;
 
@@ -121,11 +121,11 @@ class MockWearableService implements WearableService {
       final succeeds = _rng.nextDouble() > 0.3;
 
       if (succeeds) {
-        _setState(WearableConnectionState.connecting);
+        _emitConnectionState(WearableConnectionState.connecting);
         await Future.delayed(const Duration(milliseconds: 500));
         _attempt = 0;
         _reconnectController.add(null);
-        _setState(WearableConnectionState.connected);
+        _emitConnectionState(WearableConnectionState.connected);
         _startReadingsLoop();
       } else {
         _scheduleReconnect();

@@ -43,7 +43,7 @@ final connectivityMonitorProvider = Provider<ConnectivityMonitor>.internal(
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
 typedef ConnectivityMonitorRef = ProviderRef<ConnectivityMonitor>;
-String _$syncManagerHash() => r'f526af5e51e618b6a684102cd3cc02a1896007bf';
+String _$syncManagerHash() => r'2be301eb2d8cfc3e59f9c9fc6293165d5c41b71e';
 
 /// Copied from Dart SDK
 class _SystemHash {

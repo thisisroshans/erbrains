@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:uuid/uuid.dart';
 
-import '../models/health_reading.dart';
+import '../domain/entities/health_reading.dart';
 import '../wearable/wearable_service.dart';
 import '../wearable/wearable_snapshot.dart';
 import 'health_reading_local_store.dart';

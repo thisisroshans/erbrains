@@ -41,43 +41,100 @@ box needed. See "Testing" below for what is and isn't covered.
 
 ## Architecture
 
+**Clean Architecture** (domain / data / presentation), applied pragmatically
+— see "Why not the textbook version everywhere" below for what was
+deliberately left out and why.
+
 ```
 lib/
-  design_system/     Nocturne design tokens + primitives (button, card, tag, ...)
+  design_system/            Nocturne design tokens + primitives (button, card, tag, ...) — the
+                             shared visual vocabulary every screen (View) is built from.
+
   core/
-    api/              ApiClient — one method per backend endpoint
-    models/           Wire-format models (AppUser, Product, Order, HealthReading, ...)
-    wearable/          WearableService interface + MockWearableService
-    health_sync/       HealthReadingLocalStore, SyncManager, HealthSyncEngine — the offline engine
-    offline/           ConnectivityMonitor, CachePolicy, Hive box setup, LocalDataWiper
-    storage/           TokenStorage (session persistence)
-    providers/         App-wide Riverpod providers (composition root)
-  features/
-    auth/, dashboard/, connection/, history/, sync/,
-    shop/, cart/, checkout/, orders/, profile/, shell/
-                       One folder per screen/flow; each owns its Riverpod
-                       providers alongside its widgets
-  app.dart, main.dart  Entry point, theme, ProviderScope
+    domain/
+      entities/               Plain data classes: AppUser, Product, Cart, Order,
+                               Device, HealthReading, HealthSummaryPoint. No
+                               Flutter/Dio/Hive imports — pure Dart.
+      repositories/           Abstract contracts: AuthRepository, DeviceRepository,
+                               ProductRepository, CartRepository, OrderRepository.
+                               Presentation code depends on these, never on a
+                               concrete impl or on ApiClient directly.
+
+    data/
+      datasources/
+        remote/                ApiClient + ApiException — one method per backend
+                                endpoint, the only place that speaks HTTP.
+        local/                 TokenStorage, ProductsLocalCache — Hive-backed,
+                                the only place that reads/writes those boxes.
+      repositories/             *Impl classes satisfying the domain contracts,
+                                each composing one or more datasources
+                                (e.g. ProductRepositoryImpl = ApiClient +
+                                ProductsLocalCache + the cache-first policy).
+
+    health_sync/               HealthReadingLocalStore, SyncManager, HealthSyncEngine
+                                — the offline engine. Deliberately *not* squeezed into
+                                the repository shape above; see below.
+    wearable/                  WearableService interface + MockWearableService —
+                                the assignment's own required architecture, kept
+                                as its own abstraction rather than folded into
+                                "repositories" (a live device stream isn't a CRUD resource).
+    offline/                   ConnectivityMonitor, CachePolicy, Hive box setup, LocalDataWiper
+    providers/                 The composition root: datasource_providers.dart wires
+                                the data sources, repository_providers.dart wires
+                                domain-typed repositories on top of them.
+
+  features/<name>/presentation/
+    controllers/              The Controller/ViewModel layer — Riverpod notifiers
+                               and providers, one per feature, depending only on
+                               core/domain/repositories (never ApiClient/Hive directly).
+    screens/                  The View layer — one file per screen.
+    widgets/                  Feature-local presentational widgets (charts, tab bar, ...).
+
+  app.dart, main.dart        Entry point, theme, ProviderScope
 ```
+
+**Why "MVC" and "Riverpod" aren't in tension.** The classic Controller's job
+— receive an intent, decide what changes, hand the View new state — is
+exactly what a Riverpod `Notifier` does here. A separate hand-rolled
+Controller class delegating straight to a Notifier would be a pass-through
+layer with no logic of its own, which is the same kind of unnecessary
+indirection the assignment's "avoid unnecessary complexity" guidance warns
+against. So: **Model = `core/domain/entities`, View = `presentation/screens`
++ `presentation/widgets`, Controller = `presentation/controllers`** (Riverpod
+notifiers/providers) — MVC roles, Riverpod idioms.
 
 **State management: Riverpod, generator-based (`@riverpod`), not
 Bloc/Cubit or plain `ChangeNotifier`.** Providers are annotated
 functions/classes over immutable state (`copyWith`), composed by reading
 each other (`ref.watch`) rather than constructor injection. Every
-`*_provider.dart` file has a generated `*.g.dart` sibling — run
+provider file has a generated `*.g.dart` sibling — run
 `dart run build_runner build` after touching provider signatures.
 
-**No feature is more than a screen widget + a provider file.** There's no
-extra layer (repository/use-case/presenter) between them — `ApiClient` and
-`HealthReadingLocalStore` already are the repository layer, and with one
-backend and one local store per resource there was nothing a further
-abstraction would decouple. See docs/OFFLINE_SYNC.md for why this is sized
-the way it is rather than following a bigger reference architecture verbatim.
+### Why not the textbook version everywhere
+
+Two deliberate departures from a by-the-book Clean Architecture, both
+because the extra layer would have no logic in it:
+
+- **No `UseCase` class per operation.** A `LoginUseCase` that does nothing
+  but call `authRepository.login(...)` is a pass-through — the controller
+  calling the repository directly *is* the use case here, same reasoning
+  as the backend's "no services layer" decision (see `../api/README.md`).
+- **The offline engine (`core/health_sync/`) isn't wrapped in a
+  `HealthRepository`.** `SyncManager` and `HealthReadingLocalStore` already
+  provide a clean, purpose-built interface — batched drain, retry/backoff,
+  live counts via streams. Forcing that into a generic
+  `Future<List<Entity>> get(id)`-shaped repository would lose exactly the
+  vocabulary (`drain()`, `pendingCount`, `retryFailed()`) that makes
+  `docs/OFFLINE_SYNC.md`'s design legible. `SyncManager` *is* this
+  subsystem's repository-equivalent, just named for what it actually does.
+  It does, however, depend on `DeviceRepository` for device registration
+  (`core/health_sync/health_sync_providers.dart`) — the one place these two
+  subsystems genuinely meet.
 
 ## API documentation
 
 Full endpoint reference: [`../api/README.md`](../api/README.md#api-documentation).
-`lib/core/api/api_client.dart` is a 1:1 wrapper — one method per backend
+`lib/core/data/datasources/remote/api_client.dart` is a 1:1 wrapper — one method per backend
 route. Every request except `login` and the two product GETs carries
 `Authorization: Bearer <token>` (attached by a Dio interceptor reading
 `TokenStorage`); the backend verifies it and scopes the request to that
@@ -142,7 +199,7 @@ lists — connected, disconnected, connecting, reconnecting,
 connection-failed (`lib/core/wearable/wearable_connection_state.dart`) —
 and implements **exponential backoff on unexpected drops**: retry delays
 2s, 4s, 8s, 16s (4 automatic attempts), then stop and require the user to
-tap "Reconnect now" (screen 03, `lib/features/connection/connection_screen.dart`).
+tap "Reconnect now" (screen 03, `lib/features/connection/presentation/screens/connection_screen.dart`).
 A manual reconnect always works, even after auto-retry has given up. This
 is a real device concern (BLE stacks don't retry forever either) that a
 real SDK-backed `WearableService` would keep, just swapping "simulated
