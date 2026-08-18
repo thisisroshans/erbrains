@@ -10,7 +10,7 @@ import '../../../connection/presentation/screens/connection_screen.dart';
 import '../../../sync/presentation/screens/sync_status_screen.dart';
 
 /// Screen 02 · Dashboard. Live vitals come straight from the wearable
-/// stream (never the backend) — see docs/API_GAPS.md: battery and
+/// stream (never the backend) — see docs/DECISIONS.md: battery and
 /// connection status are device-layer telemetry per the PDF's
 /// wearable-simulation spec, not part of the health-data API.
 class DashboardScreen extends ConsumerStatefulWidget {

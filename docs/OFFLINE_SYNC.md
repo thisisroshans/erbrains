@@ -1,6 +1,6 @@
 # Offline-first strategy
 
-**Status: shipped for the app's one offline-critical resource.** FitRing
+FitRing
 has a single genuinely offline-sensitive workflow — the PDF's target
 scenario: *"the device generates 100 readings while the phone has no
 internet; when internet returns, sync those readings."* That workflow is
@@ -9,6 +9,21 @@ wearable emits them, queue and drain in order, survive app restarts, and
 surface their state in a sync banner. Everything else in the app (cart,
 orders, auth) stays network-only, deliberately — see "Why so little is
 queued" below.
+
+```mermaid
+flowchart LR
+    Wearable["Mock wearable\nreading emitted"] --> Store[("Hive\nhealth_readings\nstatus: pending")]
+    Store --> Drain{"SyncManager.drain()\ntriggered by: app launch,\nevery reading, connectivity\noffline->online, 10s timer,\nforeground-resume"}
+    Drain -->|online| Post["POST /health/readings\n(batch)"]
+    Drain -->|offline| Store
+    Post -->|2xx| Synced["status: synced"]
+    Post -->|failure| Retry{"attempts < maxAttempts (5)?"}
+    Retry -->|yes| Backoff["wait 2s/4s/8s/16s/30s\nstatus stays pending"]
+    Backoff --> Drain
+    Retry -->|no| Failed["status: failed\nsurfaced in SyncBanner"]
+    Failed -->|user taps Retry| Store
+    Failed -->|user taps Discard| Gone(["removed permanently"])
+```
 
 **Shipped:**
 - **Local storage** — a single Hive box (`health_readings`) holding every

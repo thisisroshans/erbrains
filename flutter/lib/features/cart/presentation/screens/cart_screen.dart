@@ -9,7 +9,7 @@ import '../controllers/cart_controller.dart';
 
 /// Flat display-only shipping estimate. The backend's order total is the
 /// cart subtotal only (no shipping column on `orders`) — see
-/// docs/API_GAPS.md. Shown here to match the design, but never sent to
+/// docs/DECISIONS.md. Shown here to match the design, but never sent to
 /// the API; Checkout's "Place order" charges the subtotal, not this total.
 const double _kDisplayShipping = 5.00;
 

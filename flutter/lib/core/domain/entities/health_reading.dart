@@ -5,7 +5,7 @@
 /// [localId] is a client-generated id (uuid v4) used only as the Hive key
 /// and queue-bookkeeping identity. The backend dedupes on the
 /// `(device_id, reading_timestamp)` pair, not a client id — see
-/// docs/API_GAPS.md — so [localId] never leaves the device and never
+/// docs/DECISIONS.md — so [localId] never leaves the device and never
 /// appears in a request body.
 class HealthReading {
   const HealthReading({

@@ -2,7 +2,7 @@
 /// in real time. Distinct from [HealthReading]: this also carries battery,
 /// which is device telemetry that never gets synced to the backend (the
 /// PDF's wearable-simulation spec scopes battery to the device layer, not
-/// the health-data API — see docs/API_GAPS.md).
+/// the health-data API — see docs/DECISIONS.md).
 class WearableSnapshot {
   const WearableSnapshot({
     required this.heartRate,

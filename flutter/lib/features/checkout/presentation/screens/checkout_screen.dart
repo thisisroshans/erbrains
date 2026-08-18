@@ -11,7 +11,7 @@ import '../controllers/checkout_controller.dart';
 ///
 /// The shipping-address and payment fields are UI-only: `orders` has no
 /// shipping_address/payment columns on the backend (matches the PDF's "no
-/// real payment gateway" scope) — see docs/API_GAPS.md. `POST /orders`
+/// real payment gateway" scope) — see docs/DECISIONS.md. `POST /orders`
 /// only takes `userId`; nothing typed here is actually sent.
 class CheckoutScreen extends ConsumerStatefulWidget {
   const CheckoutScreen({super.key, required this.userId});
