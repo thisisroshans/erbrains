@@ -1,4 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Declared here (not just in the debug/profile manifests) because the
+         app needs network access in release builds too, not only while
+         actively developed against — including the background sync task
+         (see lib/core/background/background_sync.dart), which can run
+         outside of any debug session. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="fitring"
         android:name="${applicationName}"

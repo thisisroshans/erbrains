@@ -66,7 +66,7 @@ sequenceDiagram
 
 | Method | Path | Body / Query | Notes |
 |---|---|---|---|
-| POST | `/health/readings` | `{ userId, readings: [{ deviceId, heartRate, spo2, steps, timestamp }] }` | Batch upload. Returns `{ synced, duplicatesSkipped }`. Safe to retry — duplicates skipped via the DB unique constraint (see [DATABASE.md](DATABASE.md)), not client-side dedup. |
+| POST | `/health/readings` | `{ userId, readings: [{ deviceId, heartRate, spo2, steps, timestamp }] }` | Batch upload. Returns `{ synced, duplicatesSkipped, results }`, where `results` is one `{ deviceId, timestamp, status: "synced" \| "duplicate" }` entry per input reading, same order — lets the client attribute outcome per reading instead of trusting the whole batch synced uniformly. Safe to retry — duplicates skipped via the DB unique constraint (see [DATABASE.md](DATABASE.md)), not client-side dedup. |
 | GET | `/health/readings?userId=&page=&limit=` | — | Paginated, `limit` capped at 100. |
 | GET | `/health/summary?userId=&period=daily\|weekly` | — | Aggregated min/max/avg heart rate, avg/min SpO₂, total steps over the last 7 days, bucketed by day or week — backs the History screen's charts server-side instead of shipping raw rows to the client. |
 

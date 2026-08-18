@@ -26,10 +26,15 @@ class SyncManager {
   /// foreign key. Throws on failure.
   final Future<void> Function() registerDevice;
 
-  /// Throws on failure (network error or non-2xx). A batch is all-or-
-  /// nothing: the endpoint either accepts the whole array or it doesn't,
-  /// there's no per-reading result to act on individually.
-  final Future<void> Function(List<HealthReading> batch) sendBatch;
+  /// Throws on failure (network error or non-2xx) — a batch either fails
+  /// as a whole (network drop, 5xx) or the backend accepts it and reports
+  /// back, per reading and in request order, whether it was newly
+  /// inserted (`true`) or already existed from an earlier sync (`false`,
+  /// a duplicate per the `(device_id, reading_timestamp)` unique
+  /// constraint — see api/models/healthReading.model.js). Both outcomes
+  /// are terminal/successful from the queue's point of view; only the
+  /// exception path triggers a retry.
+  final Future<List<bool>> Function(List<HealthReading> batch) sendBatch;
 
   final int maxAttempts;
   final int batchSize;
@@ -71,8 +76,21 @@ class SyncManager {
         }
 
         try {
-          await sendBatch(batch);
-          await store.markSynced(batch.map((r) => r.localId));
+          final results = await sendBatch(batch);
+          if (results.length == batch.length) {
+            final syncedIds = <String>[];
+            final duplicateIds = <String>[];
+            for (var i = 0; i < batch.length; i++) {
+              (results[i] ? syncedIds : duplicateIds).add(batch[i].localId);
+            }
+            await store.markSynced(syncedIds);
+            await store.markDuplicate(duplicateIds);
+          } else {
+            // Malformed/short response — fall back to the old
+            // whole-batch-accepted behavior rather than leaving readings
+            // stuck pending over a response-shape mismatch.
+            await store.markSynced(batch.map((r) => r.localId));
+          }
           _nextAttemptAt = null;
         } catch (_) {
           await store.recordFailedAttempt(

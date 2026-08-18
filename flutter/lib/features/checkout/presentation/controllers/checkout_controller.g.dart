@@ -7,14 +7,16 @@ part of 'checkout_controller.dart';
 // **************************************************************************
 
 String _$checkoutSubmissionHash() =>
-    r'bed0c72ea50b3b31eddee0925af4851ab36eec34';
+    r'4d7d2730e76c74d14d365ea76ae22f0dfcb3fc66';
 
 /// Owns the "Place order" submission's loading flag — the Controller layer
 /// for Checkout. Screen-local, ephemeral UI state, but modeled as Riverpod
-/// state (not `setState`) like everything else in the app; `submit`
-/// throws [ApiException] on failure, letting the screen decide how to
-/// surface it (a `SnackBar`) while this controller only owns "is it
-/// in flight."
+/// state (not `setState`) like everything else in the app.
+///
+/// Unlike the pre-offline-queue version of this controller, [submit] never
+/// throws: placing an order always goes through the same queue as every
+/// other cart write (see CartController), so there's nothing left to
+/// surface synchronously except which of [CheckoutOutcome] happened.
 ///
 /// Copied from [CheckoutSubmission].
 @ProviderFor(CheckoutSubmission)

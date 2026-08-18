@@ -163,8 +163,15 @@ flutter/lib/
                                 ProductsLocalCache + the cache-first policy).
 
     health_sync/               HealthReadingLocalStore, SyncManager, HealthSyncEngine
-                                — the offline engine. Deliberately *not* squeezed into
-                                the repository shape above; see below.
+                                — the reading offline queue. Deliberately *not* squeezed
+                                into the repository shape above; see below.
+    cart_sync/                 CartSyncStore, CartSyncManager, effective_cart.dart — the
+                                cart/order offline queue, structurally mirroring
+                                health_sync/ but single-mutation-at-a-time rather than
+                                batched. See OFFLINE_SYNC.md#cartorder-offline-queue.
+    background/                BackgroundSync (workmanager) — OS-level periodic drain
+                                of both queues above, independent of the app's UI
+                                isolate being alive. See OFFLINE_SYNC.md#background-sync.
     wearable/                  WearableService interface + MockWearableService —
                                 see WEARABLE_INTEGRATION.md.
     offline/                   ConnectivityMonitor, CachePolicy, Hive box setup, LocalDataWiper
@@ -240,6 +247,14 @@ carry no logic of their own:
   `DeviceRepository` for device registration
   (`core/health_sync/health_sync_providers.dart`) — the one place these
   two subsystems meet.
+- **Same reasoning for `core/cart_sync/` — `CartRepository` is read-only.**
+  `CartRepository.get()` remains (a plain fetch has no queue-specific
+  vocabulary to lose), but `add`/`setQuantity`/`remove` were *removed*
+  from it once the offline queue existed — `CartSyncManager` calls
+  `ApiClient` directly for those, the same way `SyncManager` does for
+  readings. A `CartRepository.add()` that just forwarded to
+  `CartSyncStore.enqueue()` would be exactly the pass-through this section
+  is about avoiding.
 
 ---
 
@@ -249,12 +264,13 @@ carry no logic of their own:
 | --- | --- | --- |
 | Validation failure | `400` before any DB call | Surfaced via `ApiException` |
 | Foreign key violation (Postgres `23503`) | Mapped to `400` | Same |
-| Duplicate health reading | Not an error — `ON CONFLICT DO NOTHING` + `duplicatesSkipped` count | Not client-visible — no dedup logic needed client-side |
-| Checkout on empty cart | `400 "Cart is empty"`, raised before the transaction commits | Surfaced via `SnackBar`/inline error |
+| Duplicate health reading | Not an error — `ON CONFLICT DO NOTHING`, and now reported per-reading in `results` (see [API.md](API.md)) | Reconciled precisely (`SyncStatus.duplicate` vs. `synced`), not just absorbed into a blanket "batch succeeded" — see [OFFLINE_SYNC.md](OFFLINE_SYNC.md#reading-conflict-resolution) |
+| Checkout on empty cart | `400 "Cart is empty"`, raised before the transaction commits | Same retry/backoff path as any other queued mutation, surfaced as "queued" rather than a synchronous error — see [OFFLINE_SYNC.md](OFFLINE_SYNC.md#cartorder-offline-queue) |
 | Auth failure | `401` (bad password / missing or malformed token) | Login form shows the error; no silent-logout-on-401 interceptor — a session gone stale mid-use surfaces on the next action rather than force-navigating to Login |
 | Acting on behalf of another user | `403` before any DB call | N/A — client always sends its own `userId` |
 | Cart item not owned by caller | `PATCH`/`DELETE /cart/:id` return `404`, not `403` — avoids confirming the id exists at all | Surfaced as a normal `ApiException` |
 | Unexpected/DB error | `500`, generic message, real error logged server-side | `DioException` without a response resolves to a generic `ApiException`, never an uncaught exception reaching the UI |
 | Bluetooth/device disconnect | N/A | Auto-reconnect with backoff → `connectionFailed` after 4 attempts → manual "Reconnect now" always available. See [WEARABLE_INTEGRATION.md](WEARABLE_INTEGRATION.md). |
-| No internet | N/A | Reads fall back to local data (History: always; Products: cache-first, 7-day grace). Health-reading writes queue; cart/order writes surface the network error (no offline path). |
-| Failed sync | N/A | Per-reading retry/backoff, surfaced in `SyncBanner`. See [OFFLINE_SYNC.md](OFFLINE_SYNC.md). |
+| No internet | N/A | Reads fall back to local data (History: always; Products: cache-first, 7-day grace; Cart: last-known baseline). Health-reading and cart/order writes both queue rather than failing — see [OFFLINE_SYNC.md](OFFLINE_SYNC.md). |
+| Failed sync | N/A | Per-item retry/backoff, surfaced in `SyncBanner`/`CartSyncBanner`. See [OFFLINE_SYNC.md](OFFLINE_SYNC.md). |
+| App killed / fully backgrounded | N/A | In-app drain triggers stop; a `workmanager`-backed OS task can still drain both queues periodically — best-effort, not guaranteed timing, and its real-device execution is unverified in this build. See [OFFLINE_SYNC.md#background-sync](OFFLINE_SYNC.md#background-sync). |

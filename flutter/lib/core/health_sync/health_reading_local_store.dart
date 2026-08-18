@@ -52,6 +52,21 @@ class HealthReadingLocalStore {
     }
   }
 
+  /// Marks readings the backend identified as already present from an
+  /// earlier sync (the `(device_id, reading_timestamp)` unique constraint)
+  /// — resolved, same as [markSynced], just distinguishable in the data
+  /// for anyone auditing what actually happened to a batch.
+  Future<void> markDuplicate(Iterable<String> localIds) async {
+    for (final id in localIds) {
+      final reading = _get(id);
+      if (reading == null) continue;
+      await _box.put(
+        id,
+        reading.copyWith(syncStatus: SyncStatus.duplicate, attempts: 0).toHiveMap(),
+      );
+    }
+  }
+
   /// Increments each reading's attempt counter; readings that hit
   /// [maxAttempts] move to [SyncStatus.failed] and drop out of future
   /// automatic batches until [retryFailed] resets them.
@@ -87,6 +102,24 @@ class HealthReadingLocalStore {
         .map((r) => r.localId)
         .toList();
     await _box.deleteAll(failedIds);
+  }
+
+  /// Deletes only [SyncStatus.synced] readings older than [retention] —
+  /// pending/failed readings are never evicted automatically, since that
+  /// would be silent data loss rather than housekeeping. Bounds the box's
+  /// otherwise-unbounded growth (see docs/OFFLINE_SYNC.md's "Explicitly
+  /// not built" list). Returns the number of readings evicted.
+  ///
+  /// [now] is injectable for tests; defaults to the real wall clock.
+  Future<int> evictSyncedOlderThan(Duration retention, {DateTime Function()? now}) async {
+    final cutoff = (now ?? DateTime.now)().toUtc().subtract(retention);
+    final staleIds = _all()
+        .where((r) => r.syncStatus == SyncStatus.synced && r.timestamp.toUtc().isBefore(cutoff))
+        .map((r) => r.localId)
+        .toList();
+    if (staleIds.isEmpty) return 0;
+    await _box.deleteAll(staleIds);
+    return staleIds.length;
   }
 
   HealthReading? _get(String localId) {

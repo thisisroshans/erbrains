@@ -113,7 +113,7 @@ class _ProductTile extends ConsumerWidget {
                 semanticLabel: 'Add ${product.name} to cart',
                 onPressed: () => ref
                     .read(cartProvider(userId).notifier)
-                    .addToCart(productId: product.id, quantity: 1),
+                    .addToCart(product: product, quantity: 1),
               ),
             ],
           ),

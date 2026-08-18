@@ -80,4 +80,10 @@ class HealthReading {
       );
 }
 
-enum SyncStatus { pending, syncing, failed, synced }
+/// [duplicate]: the backend already had this exact `(deviceId, timestamp)`
+/// reading from an earlier sync (see api/models/healthReading.model.js's
+/// `ON CONFLICT DO NOTHING`). Distinct from [synced] so the local store can
+/// report precisely what happened to a batch instead of treating every
+/// accepted response the same way — see [SyncManager]'s per-reading
+/// reconciliation.
+enum SyncStatus { pending, syncing, failed, synced, duplicate }

@@ -103,7 +103,13 @@ class ApiClient {
   // Health
   // ---------------------------------------------------------------------
 
-  Future<Map<String, dynamic>> syncHealthReadings({
+  /// Returns one bool per reading, in the same order as [readings]: `true`
+  /// if the backend newly inserted it, `false` if it was already there
+  /// from an earlier sync (duplicate per `(device_id, reading_timestamp)`
+  /// — see api/models/healthReading.model.js). Falls back to "everything
+  /// synced" if the response is missing the per-reading `results` field,
+  /// for compatibility with a backend that hasn't been upgraded.
+  Future<List<bool>> syncHealthReadings({
     required String userId,
     required List<HealthReading> readings,
   }) {
@@ -115,7 +121,14 @@ class ApiClient {
           'readings': readings.map((r) => r.toSyncJson()).toList(),
         },
       ),
-      (data) => data as Map<String, dynamic>,
+      (data) {
+        final map = data as Map<String, dynamic>;
+        final results = map['results'] as List<dynamic>?;
+        if (results == null) return List<bool>.filled(readings.length, true);
+        return results
+            .map((r) => (r as Map<String, dynamic>)['status'] == 'synced')
+            .toList();
+      },
     );
   }
 

@@ -21,6 +21,11 @@ class HealthSyncEngine {
     required this.connectivityOnTransition,
   });
 
+  /// Synced readings older than this are evicted on each session start —
+  /// bounds the local store's growth without ever touching data that
+  /// hasn't confirmed sync yet. See [HealthReadingLocalStore.evictSyncedOlderThan].
+  static const evictionRetention = Duration(days: 30);
+
   final WearableService wearableService;
   final HealthReadingLocalStore store;
   final SyncManager syncManager;
@@ -38,6 +43,9 @@ class HealthSyncEngine {
     // Covers app launch: there may already be pending readings from a
     // previous session (e.g. the app was killed mid-drain).
     syncManager.drain();
+    // Housekeeping sweep, once per session start rather than on a tight
+    // timer — cheap, but no reason to run it more than once per launch.
+    store.evictSyncedOlderThan(evictionRetention);
   }
 
   void _onSnapshot(WearableSnapshot snapshot) {

@@ -44,7 +44,10 @@ void main() {
     final manager = SyncManager(
       store: store,
       registerDevice: () async => registerCalls++,
-      sendBatch: (batch) async => sendCalls++,
+      sendBatch: (batch) async {
+        sendCalls++;
+        return List.filled(batch.length, true);
+      },
     );
 
     await manager.drain();
@@ -63,7 +66,10 @@ void main() {
     final manager = SyncManager(
       store: store,
       registerDevice: () async => throw Exception('offline'),
-      sendBatch: (batch) async => sendCalls++,
+      sendBatch: (batch) async {
+        sendCalls++;
+        return List.filled(batch.length, true);
+      },
     );
 
     await manager.drain();
@@ -82,7 +88,7 @@ void main() {
     final manager = SyncManager(
       store: store,
       registerDevice: () async => registerCalls++,
-      sendBatch: (batch) async {},
+      sendBatch: (batch) async => List.filled(batch.length, true),
     );
 
     await manager.drain(); // syncs r1 + r2 in one batch
@@ -164,6 +170,7 @@ void main() {
       registerDevice: () async {},
       sendBatch: (batch) async {
         if (shouldFail) throw Exception('network error');
+        return List.filled(batch.length, true);
       },
       maxAttempts: 1, // fails straight to `failed` on the first attempt
     );
@@ -191,6 +198,7 @@ void main() {
       registerDevice: () async {},
       sendBatch: (batch) async {
         synced.addAll(batch.map((r) => r.localId));
+        return List.filled(batch.length, true);
       },
     );
 
@@ -198,5 +206,95 @@ void main() {
 
     expect(synced, unorderedEquals(['r1', 'r2', 'r3']));
     expect(store.pendingCount(), 0);
+  });
+
+  group('per-reading duplicate reconciliation', () {
+    test('marks accepted readings synced and duplicates as duplicate, not pending', () async {
+      final store = HealthReadingLocalStore();
+      await store.insert(reading('new1'));
+      await store.insert(reading('dup1'));
+      await store.insert(reading('new2'));
+
+      final manager = SyncManager(
+        store: store,
+        registerDevice: () async {},
+        // Mirrors the backend's `results` order: batch[1] ('dup1') is the
+        // only duplicate.
+        sendBatch: (batch) async => batch.map((r) => r.localId != 'dup1').toList(),
+      );
+
+      await manager.drain();
+
+      expect(store.pendingCount(), 0);
+      expect(store.failedCount(), 0);
+
+      final all = store.recent(deviceId: 'FITRING-001', limit: 10);
+      expect(all.firstWhere((r) => r.localId == 'new1').syncStatus, SyncStatus.synced);
+      expect(all.firstWhere((r) => r.localId == 'new2').syncStatus, SyncStatus.synced);
+      expect(all.firstWhere((r) => r.localId == 'dup1').syncStatus, SyncStatus.duplicate);
+    });
+
+    test('falls back to marking the whole batch synced if the response length is malformed', () async {
+      final store = HealthReadingLocalStore();
+      await store.insert(reading('r1'));
+      await store.insert(reading('r2'));
+
+      final manager = SyncManager(
+        store: store,
+        registerDevice: () async {},
+        sendBatch: (batch) async => [true], // wrong length for a 2-item batch
+      );
+
+      await manager.drain();
+
+      expect(store.pendingCount(), 0);
+      final all = store.recent(deviceId: 'FITRING-001', limit: 10);
+      expect(all.every((r) => r.syncStatus == SyncStatus.synced), isTrue);
+    });
+  });
+
+  group('evictSyncedOlderThan', () {
+    test('deletes only synced readings past the retention window', () async {
+      final store = HealthReadingLocalStore();
+      final now = DateTime.utc(2026, 2, 1);
+
+      await store.insert(reading('old-synced', timestamp: now.subtract(const Duration(days: 40))));
+      await store.insert(reading('recent-synced', timestamp: now.subtract(const Duration(days: 5))));
+      await store.insert(reading('old-pending', timestamp: now.subtract(const Duration(days: 40))));
+
+      final manager = SyncManager(
+        store: store,
+        registerDevice: () async {},
+        sendBatch: (batch) async => List.filled(batch.length, true),
+      );
+      await manager.drain(); // marks all three synced
+      await store.recordFailedAttempt(['old-pending'], maxAttempts: 999); // put it back to pending
+
+      final evicted = await store.evictSyncedOlderThan(const Duration(days: 30), now: () => now);
+
+      expect(evicted, 1);
+      final remainingIds = store.recent(deviceId: 'FITRING-001', limit: 100).map((r) => r.localId);
+      expect(remainingIds, containsAll(['recent-synced', 'old-pending']));
+      expect(remainingIds, isNot(contains('old-synced')));
+    });
+
+    test('never evicts failed readings regardless of age', () async {
+      final store = HealthReadingLocalStore();
+      await store.insert(reading('r1', timestamp: DateTime.utc(2020, 1, 1)));
+
+      final manager = SyncManager(
+        store: store,
+        registerDevice: () async {},
+        sendBatch: (batch) async => throw Exception('network error'),
+        maxAttempts: 1,
+      );
+      await manager.drain(); // -> failed immediately (maxAttempts: 1)
+      expect(store.failedCount(), 1);
+
+      final evicted = await store.evictSyncedOlderThan(const Duration(days: 1));
+
+      expect(evicted, 0);
+      expect(store.failedCount(), 1);
+    });
   });
 }

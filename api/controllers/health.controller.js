@@ -72,6 +72,11 @@ async function postReadings(req, res) {
 
     let synced = 0;
     let duplicatesSkipped = 0;
+    // One entry per input reading, same order — lets the client attribute
+    // sync outcome per-reading instead of just trusting the whole batch
+    // succeeded uniformly. See docs/DECISIONS.md's reading conflict
+    // resolution note.
+    const results = [];
 
     try {
         // ------------------------------------------
@@ -89,14 +94,17 @@ async function postReadings(req, res) {
 
             if (inserted) {
                 synced++;
+                results.push({ deviceId: reading.deviceId, timestamp: reading.timestamp, status: "synced" });
             } else {
                 duplicatesSkipped++;
+                results.push({ deviceId: reading.deviceId, timestamp: reading.timestamp, status: "duplicate" });
             }
         }
 
         return res.status(201).json({
             synced,
             duplicatesSkipped,
+            results,
         });
 
     } catch (error) {

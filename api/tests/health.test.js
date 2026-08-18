@@ -118,7 +118,14 @@ describe("POST /health/readings", () => {
             });
 
         expect(res.status).toBe(201);
-        expect(res.body).toEqual({ synced: 1, duplicatesSkipped: 1 });
+        expect(res.body).toEqual({
+            synced: 1,
+            duplicatesSkipped: 1,
+            results: [
+                { deviceId: "FITRING-001", timestamp: "2026-08-17T10:30:00Z", status: "synced" },
+                { deviceId: "FITRING-001", timestamp: "2026-08-17T10:30:00Z", status: "duplicate" },
+            ],
+        });
         expect(db.query).toHaveBeenCalledTimes(2);
     });
 

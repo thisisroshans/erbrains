@@ -6,7 +6,7 @@ part of 'cart_controller.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$cartHash() => r'0bd2311b2fb97e3f59f9c40aae9944d23492b37e';
+String _$cartHash() => r'1e5aeaae9324c291cc8492d1a3848b394af4972d';
 
 /// Copied from Dart SDK
 class _SystemHash {
@@ -38,6 +38,13 @@ abstract class _$Cart extends BuildlessAutoDisposeNotifier<CartState> {
 /// One controller per `userId` — the cart badge, Cart screen and product
 /// "Add to cart" buttons all watch the same instance for a given user.
 ///
+/// Every mutation (add/setQuantity/remove) is queued through
+/// [CartSyncStore] rather than calling the backend directly — see
+/// docs/OFFLINE_SYNC.md. That queue, folded onto the last-known server
+/// cart via [applyPendingCartMutations], is this controller's actual
+/// source of truth for [CartState.cart]; [refresh] only refetches and
+/// updates the *baseline* half of that.
+///
 /// Copied from [Cart].
 @ProviderFor(Cart)
 const cartProvider = CartFamily();
@@ -45,16 +52,37 @@ const cartProvider = CartFamily();
 /// One controller per `userId` — the cart badge, Cart screen and product
 /// "Add to cart" buttons all watch the same instance for a given user.
 ///
+/// Every mutation (add/setQuantity/remove) is queued through
+/// [CartSyncStore] rather than calling the backend directly — see
+/// docs/OFFLINE_SYNC.md. That queue, folded onto the last-known server
+/// cart via [applyPendingCartMutations], is this controller's actual
+/// source of truth for [CartState.cart]; [refresh] only refetches and
+/// updates the *baseline* half of that.
+///
 /// Copied from [Cart].
 class CartFamily extends Family<CartState> {
   /// One controller per `userId` — the cart badge, Cart screen and product
   /// "Add to cart" buttons all watch the same instance for a given user.
+  ///
+  /// Every mutation (add/setQuantity/remove) is queued through
+  /// [CartSyncStore] rather than calling the backend directly — see
+  /// docs/OFFLINE_SYNC.md. That queue, folded onto the last-known server
+  /// cart via [applyPendingCartMutations], is this controller's actual
+  /// source of truth for [CartState.cart]; [refresh] only refetches and
+  /// updates the *baseline* half of that.
   ///
   /// Copied from [Cart].
   const CartFamily();
 
   /// One controller per `userId` — the cart badge, Cart screen and product
   /// "Add to cart" buttons all watch the same instance for a given user.
+  ///
+  /// Every mutation (add/setQuantity/remove) is queued through
+  /// [CartSyncStore] rather than calling the backend directly — see
+  /// docs/OFFLINE_SYNC.md. That queue, folded onto the last-known server
+  /// cart via [applyPendingCartMutations], is this controller's actual
+  /// source of truth for [CartState.cart]; [refresh] only refetches and
+  /// updates the *baseline* half of that.
   ///
   /// Copied from [Cart].
   CartProvider call(String userId) {
@@ -84,10 +112,24 @@ class CartFamily extends Family<CartState> {
 /// One controller per `userId` — the cart badge, Cart screen and product
 /// "Add to cart" buttons all watch the same instance for a given user.
 ///
+/// Every mutation (add/setQuantity/remove) is queued through
+/// [CartSyncStore] rather than calling the backend directly — see
+/// docs/OFFLINE_SYNC.md. That queue, folded onto the last-known server
+/// cart via [applyPendingCartMutations], is this controller's actual
+/// source of truth for [CartState.cart]; [refresh] only refetches and
+/// updates the *baseline* half of that.
+///
 /// Copied from [Cart].
 class CartProvider extends AutoDisposeNotifierProviderImpl<Cart, CartState> {
   /// One controller per `userId` — the cart badge, Cart screen and product
   /// "Add to cart" buttons all watch the same instance for a given user.
+  ///
+  /// Every mutation (add/setQuantity/remove) is queued through
+  /// [CartSyncStore] rather than calling the backend directly — see
+  /// docs/OFFLINE_SYNC.md. That queue, folded onto the last-known server
+  /// cart via [applyPendingCartMutations], is this controller's actual
+  /// source of truth for [CartState.cart]; [refresh] only refetches and
+  /// updates the *baseline* half of that.
   ///
   /// Copied from [Cart].
   CartProvider(String userId)

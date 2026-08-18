@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/cart_sync/cart_sync_providers.dart';
 import '../../../../core/health_sync/health_sync_providers.dart';
 import '../../../../design_system/nocturne_colors.dart';
 import '../../../dashboard/presentation/screens/dashboard_screen.dart';
@@ -34,6 +35,7 @@ class RootShell extends ConsumerStatefulWidget {
 
 class _RootShellState extends ConsumerState<RootShell> with WidgetsBindingObserver {
   Timer? _periodicDrain;
+  StreamSubscription<bool>? _connectivitySub;
 
   @override
   void initState() {
@@ -41,15 +43,24 @@ class _RootShellState extends ConsumerState<RootShell> with WidgetsBindingObserv
     WidgetsBinding.instance.addObserver(this);
     // Belt-and-suspenders trigger: connectivity transitions and app-resume
     // cover the common cases, but a short periodic drain means readings
-    // sync promptly even while the app just sits open and online with no
-    // transition event to react to.
+    // (and any queued cart/order writes) sync promptly even while the app
+    // just sits open and online with no transition event to react to.
     _periodicDrain = Timer.periodic(const Duration(seconds: 10), (_) => _drain());
+    // HealthSyncEngine already reacts to this transition for readings
+    // internally; cart/order mutations have no equivalent "engine" (they're
+    // always enqueued through a screen action, not a background stream),
+    // so this is the one place their reconnect-triggered drain is wired.
+    _connectivitySub = ref.read(connectivityMonitorProvider).onTransition.listen((online) {
+      if (online) _drain();
+    });
+    _drain(); // covers app launch: readings/mutations left over from a killed session.
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _periodicDrain?.cancel();
+    _connectivitySub?.cancel();
     super.dispose();
   }
 
@@ -60,6 +71,7 @@ class _RootShellState extends ConsumerState<RootShell> with WidgetsBindingObserv
 
   void _drain() {
     ref.read(syncManagerProvider(widget.userId)).drain();
+    ref.read(cartSyncManagerProvider(widget.userId)).drain();
   }
 
   @override

@@ -66,7 +66,7 @@ reasoning behind every non-obvious technical decision — lives in
 | [`docs/DATABASE.md`](docs/DATABASE.md) | Full ERD, constraints, and idempotency design |
 | [`docs/API.md`](docs/API.md) | Endpoint reference, auth model, worked `curl` example |
 | [`docs/WEARABLE_INTEGRATION.md`](docs/WEARABLE_INTEGRATION.md) | `WearableService` abstraction, mock → real SDK swap path, connection/retry state machine |
-| [`docs/OFFLINE_SYNC.md`](docs/OFFLINE_SYNC.md) | Offline queue design, retry/backoff, cache policy, what's deliberately not built |
+| [`docs/OFFLINE_SYNC.md`](docs/OFFLINE_SYNC.md) | Reading + cart/order offline queues, conflict resolution, retry/backoff, OS-level background sync, cache policy |
 | [`docs/DECISIONS.md`](docs/DECISIONS.md) | Every major technical decision and trade-off, backend and Flutter, plus explicit scope exclusions |
 
 ## Testing

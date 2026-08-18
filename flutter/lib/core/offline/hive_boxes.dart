@@ -15,7 +15,11 @@ class HiveBoxes {
   /// `GET /products` response, cache-first with a 24h TTL.
   static const productsCache = 'products_cache';
 
-  static const _all = [healthReadings, productsCache];
+  /// The cart/order offline write queue — last-known server cart snapshot
+  /// plus every not-yet-applied cart/order mutation. See CartSyncStore.
+  static const cartSync = 'cart_sync';
+
+  static const _all = [healthReadings, productsCache, cartSync];
 
   static Future<void> init() async {
     await Hive.initFlutter();

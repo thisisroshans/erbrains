@@ -6,6 +6,7 @@ import '../../../../design_system/nocturne.dart';
 import '../../../checkout/presentation/screens/checkout_screen.dart';
 import '../../../shop/presentation/widgets/product_image_placeholder.dart';
 import '../controllers/cart_controller.dart';
+import '../widgets/cart_sync_banner.dart';
 
 /// Flat display-only shipping estimate. The backend's order total is the
 /// cart subtotal only (no shipping column on `orders`) — see
@@ -30,39 +31,46 @@ class CartScreen extends ConsumerWidget {
         title: Text('Cart', style: NocturneType.h4),
       ),
       body: SafeArea(
-        child: state.isLoading && state.cart.items.isEmpty
-            ? const Center(child: CircularProgressIndicator())
-            : state.cart.items.isEmpty
-                ? Center(
-                    child: Text('Your cart is empty', style: NocturneType.caption),
-                  )
-                : ListView(
-                    padding: const EdgeInsets.all(20),
-                    children: [
-                      for (final item in state.cart.items) ...[
-                        _CartLine(item: item, userId: userId),
-                        const Divider(height: 24, color: NocturneColors.neutral800),
-                      ],
-                      _SummaryRow(label: 'Subtotal', value: state.cart.totalAmount),
-                      _SummaryRow(label: 'Shipping', value: _kDisplayShipping),
-                      const SizedBox(height: 4),
-                      _SummaryRow(
-                        label: 'Total',
-                        value: state.cart.totalAmount + _kDisplayShipping,
-                        emphasize: true,
-                      ),
-                      const SizedBox(height: 16),
-                      NocturneButton(
-                        label: 'Checkout',
-                        block: true,
-                        onPressed: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => CheckoutScreen(userId: userId),
-                          ),
+        child: Column(
+          children: [
+            CartSyncBanner(userId: userId),
+            Expanded(
+              child: state.isLoading && state.cart.items.isEmpty
+                  ? const Center(child: CircularProgressIndicator())
+                  : state.cart.items.isEmpty
+                      ? Center(
+                          child: Text('Your cart is empty', style: NocturneType.caption),
+                        )
+                      : ListView(
+                          padding: const EdgeInsets.all(20),
+                          children: [
+                            for (final item in state.cart.items) ...[
+                              _CartLine(item: item, userId: userId),
+                              const Divider(height: 24, color: NocturneColors.neutral800),
+                            ],
+                            _SummaryRow(label: 'Subtotal', value: state.cart.totalAmount),
+                            _SummaryRow(label: 'Shipping', value: _kDisplayShipping),
+                            const SizedBox(height: 4),
+                            _SummaryRow(
+                              label: 'Total',
+                              value: state.cart.totalAmount + _kDisplayShipping,
+                              emphasize: true,
+                            ),
+                            const SizedBox(height: 16),
+                            NocturneButton(
+                              label: 'Checkout',
+                              block: true,
+                              onPressed: () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => CheckoutScreen(userId: userId),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ],
-                  ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -92,7 +100,20 @@ class _CartLine extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(item.name, style: NocturneType.bodySmall.copyWith(fontWeight: FontWeight.w500)),
+              Row(
+                spacing: 6,
+                children: [
+                  Flexible(
+                    child: Text(
+                      item.name,
+                      style: NocturneType.bodySmall.copyWith(fontWeight: FontWeight.w500),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (item.pendingSync)
+                    const NocturneTag(label: 'Syncing', variant: NocturneTagVariant.neutral),
+                ],
+              ),
               Text('\$${item.price.toStringAsFixed(2)}', style: NocturneType.caption),
               const SizedBox(height: 6),
               NocturneStepper(

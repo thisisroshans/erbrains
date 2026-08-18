@@ -1,13 +1,9 @@
 import '../entities/cart.dart';
 
+/// Read-only by design: cart *writes* go through the offline queue
+/// (`core/cart_sync/`), not this repository — see CartController and
+/// docs/ARCHITECTURE.md's "Deliberate departures" note on why the reading
+/// sync engine similarly bypasses a repository abstraction for writes.
 abstract class CartRepository {
   Future<Cart> get(String userId);
-
-  /// Adds [quantity] more of [productId] (or creates the line item).
-  Future<void> add({required String userId, required String productId, required int quantity});
-
-  /// Sets a line item to an exact quantity.
-  Future<void> setQuantity({required String cartItemId, required int quantity});
-
-  Future<void> remove(String cartItemId);
 }

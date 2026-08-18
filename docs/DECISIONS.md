@@ -62,9 +62,23 @@ they're judgment calls made for this codebase at this size.
   models are small enough that hand-written (de)serialization isn't a
   maintenance burden.
 - **One Hive box per genuinely distinct concern** (`health_readings`,
-  `products_cache`), not one per resource-type the way a larger reference
-  architecture might — see [OFFLINE_SYNC.md](OFFLINE_SYNC.md#why-this-apps-shape-is-much-smaller-than-the-reference-philosophy).
-  This app has exactly one resource that needs a real offline queue.
+  `products_cache`, `cart_sync`), not one per resource-type the way a
+  larger reference architecture might — see
+  [OFFLINE_SYNC.md](OFFLINE_SYNC.md#why-this-apps-shape-is-much-smaller-than-the-reference-philosophy).
+- **The cart/order queue shares one box for its baseline cache and its
+  mutation queue** (`cart_sync`, keyed by a reserved baseline key plus one
+  key per mutation), rather than the two-box split the products/readings
+  split might suggest. A single `box.watch()` stream then reacts to either
+  changing, and the Cart screen genuinely needs to redraw on both — see
+  [OFFLINE_SYNC.md](OFFLINE_SYNC.md#cartorder-offline-queue).
+- **Cart-item id remapping is persisted, not held in memory.** An item
+  added offline gets a `local:<mutation id>` placeholder id; once its
+  `add` mutation syncs, every other queued mutation referencing that
+  placeholder is rewritten to the real id *in the Hive queue itself*
+  (`CartSyncStore.rewriteCartItemId`), not just in a transient in-process
+  map. An in-memory map would lose the mapping if the app were killed
+  between the `add` syncing and a dependent `setQuantity`/`remove`
+  draining — the persisted rewrite survives that.
 - **No client-minted ids for health readings.** The backend already
   dedupes on the natural key `(device_id, reading_timestamp)`; a client id
   would solve a duplicate-detection problem that doesn't exist here.
@@ -108,10 +122,32 @@ absence reads as a decision rather than an oversight:
   never the backend, and `WearableSnapshot` (which carries battery) is
   intentionally distinct from `HealthReading` (which is what actually gets
   synced).
-- **No offline queue for cart/order writes** — see
-  [OFFLINE_SYNC.md](OFFLINE_SYNC.md#why-so-little-is-queued) for the full
-  reasoning (queuing a cart mutation raises a stock/price reconciliation
-  problem on drain that the assignment doesn't ask for).
+- **No offline queue for auth** — logging in needs a live server by
+  construction; see [OFFLINE_SYNC.md](OFFLINE_SYNC.md#why-so-little-is-queued).
+  (Cart/order writes *do* queue offline now — see
+  [OFFLINE_SYNC.md](OFFLINE_SYNC.md#cartorder-offline-queue) — this bullet
+  used to cover them too, before that was built.)
+- **Checkout never claims success it hasn't confirmed.** When "Place
+  order" can't complete synchronously (offline, or the backend rejects it
+  and it enters the normal retry cycle), the screen reports it as queued
+  rather than either pretending it succeeded or throwing an error the
+  user has to interpret — the alternative (silently folding a possible
+  order-placement failure into the generic cart-mutation pending count,
+  with no dedicated messaging) was considered and rejected specifically
+  because a checkout failing silently is a worse failure mode than a cart
+  quantity change failing silently. See
+  [OFFLINE_SYNC.md](OFFLINE_SYNC.md#cartorder-offline-queue).
+- **Background sync (`workmanager`) is verified to compile, not verified
+  to run.** `flutter build apk --debug` succeeds with the dependency
+  linked in, but no Android emulator/device was available to confirm the
+  periodic task actually registers or fires on a real OS, and iOS wasn't
+  built or run at all. Shipped anyway, on the reasoning that a real,
+  honestly-labeled implementation with a clear "verify on-device before
+  relying on this" note is more useful to a reviewer than no
+  implementation — but this is the one piece in the whole app with a
+  materially lower confidence level than everything else, and that's
+  flagged everywhere it's discussed rather than glossed over. See
+  [OFFLINE_SYNC.md](OFFLINE_SYNC.md#background-sync).
 - **No rate limiting** on the backend, and correspondingly no
   `429`/`Retry-After` handling on the client — see
   [OFFLINE_SYNC.md](OFFLINE_SYNC.md#why-this-apps-shape-is-much-smaller-than-the-reference-philosophy).

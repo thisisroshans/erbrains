@@ -94,7 +94,7 @@ class ProductDetailsScreen extends ConsumerWidget {
                           : () async {
                               final ok = await ref
                                   .read(cartProvider(userId).notifier)
-                                  .addToCart(productId: product.id, quantity: quantity);
+                                  .addToCart(product: product, quantity: quantity);
                               if (ok && context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(content: Text('Added ${product.name} to cart')),
