@@ -107,8 +107,13 @@ specific case, and each item below for the rest):
   conflicts by "the backend's version wins, or the write is simply a
   duplicate," never by combining two divergent versions of the same
   record. See [Sync conflict handling](#sync-conflict-handling).
-- 429/`Retry-After`-aware backoff — the backend has no rate limiting to
-  react to; see [Why this app's shape is much smaller](#why-this-apps-shape-is-much-smaller-than-the-reference-philosophy).
+- 429/`Retry-After`-aware backoff — the sync endpoints these queues
+  actually call (`POST /health/readings`, `POST /cart`, `POST /orders`,
+  etc.) have no rate limiting to react to. `POST /auth/login` does now
+  (see [DECISIONS.md](DECISIONS.md#backend)), but nothing in this app
+  retries a login automatically, so there's still no automatic-retry loop
+  anywhere that a `Retry-After` parser would need to inform. See
+  [Why this app's shape is much smaller](#why-this-apps-shape-is-much-smaller-than-the-reference-philosophy).
 - Auth has no offline path — see [Why so little is queued](#why-so-little-is-queued).
 
 ## Why this app's shape is much smaller than the reference philosophy
@@ -144,14 +149,20 @@ copying file names. Concretely:
   `ON CONFLICT ... DO NOTHING` (see `api/database/schema.sql`) — so there
   was no client-id design left to make. `HealthReading.localId` exists
   purely as the Hive key and never appears in a request body.
-- **No conflict (409) handling.** Following directly from the point
-  above: an endpoint that silently no-ops on a duplicate key can't return
-  a conflict. The reference doc's 409-and-404-as-"already applied" branch
-  has nothing to attach to here, so it wasn't built.
-- **No 429/`Retry-After` handling.** The backend has no rate limiting
-  implemented (see `api/middleware/auth.js` and `api/app.js` — nothing
-  parses or emits 429). Building a `Retry-After` parser for a response
-  the API can't produce would be untested-by-construction dead code;
+- **No conflict (409) handling for readings specifically.** Following
+  directly from the point above: `POST /health/readings` silently no-ops
+  on a duplicate key rather than returning a conflict, so the reference
+  doc's 409-and-404-as-"already applied" branch has nothing to attach to
+  for this queue. (`POST /orders` *does* return `409` now, for
+  insufficient stock — a genuinely different situation, where there's a
+  real business conflict to report rather than a harmless duplicate. See
+  [Cart/order offline queue](#cartorder-offline-queue).)
+- **No 429/`Retry-After` handling for the reading queue.** `POST
+  /health/readings` — the only endpoint `SyncManager` calls — has no rate
+  limiting to react to (`POST /auth/login` does now, see
+  [DECISIONS.md](DECISIONS.md#backend), but `SyncManager` never calls it).
+  Building a `Retry-After` parser for a response this specific endpoint
+  can't produce would be untested-by-construction dead code;
   `SyncManager`'s generic backoff covers "some request failed" uniformly
   instead.
 

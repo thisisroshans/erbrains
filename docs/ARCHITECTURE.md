@@ -50,12 +50,19 @@ api/
                       calls the model, shapes the JSON response
   models/         -> one file per resource, owns all SQL for that resource.
                       Never touches req/res — doesn't know an HTTP request exists.
-  middleware/     -> auth.js: verifies the bearer token and exposes req.auth
-  utils/          -> small stateless helpers shared across layers (password.js)
+  middleware/     -> auth.js: verifies the JWT and exposes req.auth;
+                      rateLimit.js: login-specific brute-force protection
+  utils/          -> small stateless helpers shared across layers
+                      (password.js: bcrypt, jwt.js: sign/verify)
+  logger.js       -> shared pino logger; pino-http (app.js) attaches a
+                      request-scoped child to req.log for every controller
+  openapi.js      -> hand-authored OpenAPI spec, served at /docs via swagger-ui-express
   db.js           -> pg Pool wrapper (query + transaction helper) — the only
                       file that talks to the `pg` package directly; every
                       model goes through it instead of connecting itself
-  database/       -> schema.sql, seed.sql and the Node scripts that run them
+  database/       -> schema.sql (idempotent baseline) + migrations/ (tracked,
+                      numbered, applied once each — see DATABASE.md) +
+                      seed.sql/seed.js and the Node scripts that run them
   tests/          -> Jest + Supertest, route logic tested against a mocked db module
 ```
 
@@ -172,7 +179,10 @@ flutter/lib/
     background/                BackgroundSync (workmanager) — OS-level periodic drain
                                 of both queues above, independent of the app's UI
                                 isolate being alive. See OFFLINE_SYNC.md#background-sync.
-    wearable/                  WearableService interface + MockWearableService —
+    wearable/                  WearableService interface + MockWearableService,
+                                plus BleWearableService — a compileable but
+                                intentionally-unimplemented stub showing where a
+                                real SDK would plug in. Not wired in anywhere;
                                 see WEARABLE_INTEGRATION.md.
     offline/                   ConnectivityMonitor, CachePolicy, Hive box setup, LocalDataWiper
     providers/                 The composition root: datasource_providers.dart wires
@@ -266,10 +276,15 @@ carry no logic of their own:
 | Foreign key violation (Postgres `23503`) | Mapped to `400` | Same |
 | Duplicate health reading | Not an error — `ON CONFLICT DO NOTHING`, and now reported per-reading in `results` (see [API.md](API.md)) | Reconciled precisely (`SyncStatus.duplicate` vs. `synced`), not just absorbed into a blanket "batch succeeded" — see [OFFLINE_SYNC.md](OFFLINE_SYNC.md#reading-conflict-resolution) |
 | Checkout on empty cart | `400 "Cart is empty"`, raised before the transaction commits | Same retry/backoff path as any other queued mutation, surfaced as "queued" rather than a synchronous error — see [OFFLINE_SYNC.md](OFFLINE_SYNC.md#cartorder-offline-queue) |
-| Auth failure | `401` (bad password / missing or malformed token) | Login form shows the error; no silent-logout-on-401 interceptor — a session gone stale mid-use surfaces on the next action rather than force-navigating to Login |
+| Insufficient stock at checkout | `409`, row-locked check inside the transaction (see [DATABASE.md](DATABASE.md)) | Classified non-retryable (`ApiException.isRetryable` is `false` for any 4xx) — a queued `placeOrder` fails immediately instead of burning its retry budget. See [OFFLINE_SYNC.md](OFFLINE_SYNC.md#cartorder-offline-queue). |
+| Cancelling an already-cancelled order | `409` | Surfaced as a normal `ApiException` on the Order History screen |
+| Login brute-forcing | `429` after 5 attempts/15 min (`express-rate-limit`) | Surfaced as a normal `ApiException` on the login form — not automatically retried, so no `Retry-After` handling needed client-side |
+| Auth failure (wrong password) | `401` | Login form shows the error |
+| Token expired / invalid signature on any other request | `401` | A dedicated interceptor (distinct from the login case above — it only fires for a request that *had* a token attached) clears the stored token and drops the app back to Login, wiping local data the same way an explicit logout does. See [API.md](API.md#client-consumption-flutter). |
 | Acting on behalf of another user | `403` before any DB call | N/A — client always sends its own `userId` |
 | Cart item not owned by caller | `PATCH`/`DELETE /cart/:id` return `404`, not `403` — avoids confirming the id exists at all | Surfaced as a normal `ApiException` |
-| Unexpected/DB error | `500`, generic message, real error logged server-side | `DioException` without a response resolves to a generic `ApiException`, never an uncaught exception reaching the UI |
+| Unexpected/DB error | `500`, generic message, structured error logged server-side (`pino`) | `DioException` without a response resolves to a generic `ApiException`, never an uncaught exception reaching the UI |
+| Unmatched route / bug in a handler with no try/catch | `404` handler / catch-all error middleware in `app.js` — a safety net below every controller's own try/catch, so nothing leaks a raw stack trace | N/A |
 | Bluetooth/device disconnect | N/A | Auto-reconnect with backoff → `connectionFailed` after 4 attempts → manual "Reconnect now" always available. See [WEARABLE_INTEGRATION.md](WEARABLE_INTEGRATION.md). |
 | No internet | N/A | Reads fall back to local data (History: always; Products: cache-first, 7-day grace; Cart: last-known baseline). Health-reading and cart/order writes both queue rather than failing — see [OFFLINE_SYNC.md](OFFLINE_SYNC.md). |
 | Failed sync | N/A | Per-item retry/backoff, surfaced in `SyncBanner`/`CartSyncBanner`. See [OFFLINE_SYNC.md](OFFLINE_SYNC.md). |

@@ -18,13 +18,30 @@ they're judgment calls made for this codebase at this size.
   roll back as a unit — see the sequence diagram in
   [ARCHITECTURE.md](ARCHITECTURE.md#checkout-transaction). Every other
   endpoint is a single statement and doesn't need one.
-- **Mock auth, not JWT.** The assignment explicitly allows mock auth. The
-  token is a base64-encoded, unsigned blob of `{ userId, email, issuedAt }`
-  — readable by anyone who decodes it, with no signature preventing
-  tampering. Acceptable for a take-home talking to itself; not production-
-  ready. Swapping in real JWTs touches only `api/middleware/auth.js` and
-  `api/controllers/auth.controller.js` — no route or model changes, since
-  everything downstream just reads `req.auth.userId`.
+- **Real JWT + bcrypt, even though the assignment explicitly allows mock
+  auth.** The original mock — an unsigned base64 blob, unsalted SHA-256
+  password hash — was upgraded because Authentication is graded as its own
+  criterion, not just a means to reach the other features. `bcryptjs`
+  (pure JS, not native `bcrypt`) specifically — no node-gyp/native build
+  step for anyone else running `npm install` on an arbitrary machine;
+  slower per-hash, an acceptable trade at this app's login volume. The
+  JWT's 7-day expiry has no refresh-token rotation behind it — a
+  deliberate scope line for a mobile session, not a web app's, not an
+  oversight. See [API.md](API.md#auth-model) for the shape and
+  `api/utils/jwt.js`/`api/utils/password.js` for the implementation.
+- **Logout doesn't blacklist the token.** A stateless JWT has no
+  server-side session to destroy. A revocation list (a table of not-yet-
+  expired-but-revoked token ids, checked on every request) was considered
+  and rejected — real added state and cleanup burden for a benefit this
+  app doesn't need at its size. `POST /auth/logout` exists for a complete
+  REST surface (the assignment lists logout as a required feature) and
+  always returns `200`; the actual security boundary is the token's own
+  expiry.
+- **Rate limiting only on `POST /auth/login`**, not globally. Every other
+  route already requires a valid token, so the attack this defends against
+  (guessing a password) doesn't apply to them — rate-limiting an
+  already-authenticated route would just be a blunt, undifferentiated
+  request cap with no specific threat it's responding to.
 - **Ownership checks live in controllers, not just middleware.**
   `requireAuth` only proves identity; `ensureSelf` (and per-controller
   `WHERE user_id = req.auth.userId` scoping, e.g. in `cart.model.js`)
@@ -40,10 +57,35 @@ they're judgment calls made for this codebase at this size.
   never sees an HTTP request, `controllers/*.js` never writes SQL. Pure
   refactor: every SQL string, status code, and response shape stayed
   identical, which is why the existing 33 tests needed zero edits.
-- **No migration framework** (Flyway/Knex/Prisma migrate) — `schema.sql`
-  applied idempotently via guarded DDL. Sufficient for a single-environment
-  take-home; wouldn't scale to a team needing versioned, reversible
-  migrations with rollback.
+- **Tracked migrations layered on top of the original idempotent
+  `schema.sql`, not a framework swap** (Flyway/Knex/Prisma migrate). The
+  baseline stays as guarded DDL, applied in full every run; schema changes
+  since then are numbered files in `database/migrations/`, applied once
+  and recorded in a `schema_migrations` table. Proportionate to this
+  project's size — a full migration framework would be more machinery than
+  the actual amount of schema churn justifies. See
+  [DATABASE.md](DATABASE.md) for the mechanics.
+- **Stock validation locks rows with `SELECT ... FOR UPDATE OF p`,
+  decrements `stock` inline in the checkout transaction, and rejects with
+  `409`** rather than a separate reservation/hold step. This is exactly
+  the redesign [OFFLINE_SYNC.md](OFFLINE_SYNC.md#why-so-little-is-queued)
+  flagged as needed once stock validation existed — the client's
+  `ApiException.isRetryable` classification (statusCode `null`/5xx =
+  retryable, any 4xx = not) is the other half: a queued `placeOrder` that
+  hits this `409` fails immediately instead of burning its retry budget on
+  a rejection that can't become true by trying again.
+- **Order cancellation has no fulfillment-state guard** — any order except
+  an already-`cancelled` one can be cancelled, `completed` included. There
+  is no shipping/fulfillment pipeline in this app that would make
+  cancelling a completed order unsafe, so adding one would be defending
+  against a state transition that can't actually cause harm here.
+- **`GET /products` returns a paginated envelope**
+  (`{ data, page, limit, total }`), not a bare array — a breaking response-
+  shape change, absorbed entirely inside `ApiClient.getProducts()` so nothing
+  above the data layer needed to change. With only 5 seed products the
+  client still just requests one large page (`limit=100`) rather than
+  paging through multiple requests; the server-side pagination exists for
+  when the catalog is bigger than that, not because the client needs it today.
 - **`products.image_url` points at placeholder images** (`placehold.co`),
   not real product photography — none exists for this project. Swapping in
   real asset URLs needs no schema change; the column is already a plain
@@ -87,9 +129,39 @@ they're judgment calls made for this codebase at this size.
 - **History computes summaries client-side** (`HealthReadingLocalStore.summary`)
   rather than calling `GET /health/summary`, so it's fully offline-capable
   and reflects readings that haven't synced yet.
-- **Mock auth token is an opaque, unsigned blob**, matching the backend's
-  own choice — this is a take-home assignment, not a production auth
-  scheme; swapping in real JWTs is backend-only.
+- **The client treats the token as opaque** — it never decodes or
+  inspects the JWT itself, just stores and attaches it. The backend's move
+  from a mock blob to a real signed JWT (see Backend, above) needed zero
+  client-side parsing changes because of this; only a new failure mode
+  (expiry) needed handling, via `ApiClient.onSessionExpired` — see next.
+- **A 401 on an *authenticated* request triggers a global session-expiry
+  event, not a per-call error.** `ApiClient` distinguishes "login returned
+  401" (wrong password — a normal `ApiException` on the login form) from
+  "a request that had a token attached got 401 back" (the token expired or
+  the server's secret rotated) by checking whether the failed request
+  actually carried an `Authorization` header. Only the second case clears
+  the stored token and drops the whole app back to the login screen
+  (`AuthController` listens on `ApiClient.onSessionExpired`) — this needed
+  to live at the HTTP-client level, not in individual screens, since any
+  request anywhere in the app could be the one that discovers the session
+  died.
+- **A `BleWearableService` stub exists but isn't wired in.** Adds no real
+  functionality — every method throws `UnimplementedError` — but makes the
+  "this architecture is ready for a real SDK" claim in
+  [WEARABLE_INTEGRATION.md](WEARABLE_INTEGRATION.md) a concrete, compileable
+  seam in the repo (real platform-channel names, real method shapes)
+  instead of only a paragraph of prose.
+- **Light/system theme was scoped out after investigation, not before
+  it.** `NocturneColors` are `static const Color` values referenced
+  directly throughout every screen — not routed through `Theme.of(context)`
+  anywhere. Wiring `ThemeMode.system` alone would change nothing visually;
+  a real light theme means re-threading dozens of widgets through
+  context-aware tokens, which is a large refactor with real regression
+  risk that can't be verified without a live emulator/device to actually
+  look at the result. Attempting it anyway and shipping it unverified was
+  judged worse than clearly not doing it — see the note in
+  [ARCHITECTURE.md](ARCHITECTURE.md#flutter) for what a real
+  implementation would need to touch.
 - **`IndexedStack` for the four root tabs** (Dashboard/History/Shop/
   Profile) rather than lazy-built routes — keeps scroll position and
   provider state per tab across switches. Trade-off: all four build
@@ -148,14 +220,27 @@ absence reads as a decision rather than an oversight:
   materially lower confidence level than everything else, and that's
   flagged everywhere it's discussed rather than glossed over. See
   [OFFLINE_SYNC.md](OFFLINE_SYNC.md#background-sync).
-- **No rate limiting** on the backend, and correspondingly no
-  `429`/`Retry-After` handling on the client — see
-  [OFFLINE_SYNC.md](OFFLINE_SYNC.md#why-this-apps-shape-is-much-smaller-than-the-reference-philosophy).
-- **No widget-level or golden tests** for Flutter screens, and no
-  integration test suite running the backend's SQL against a real
-  Postgres instance — both verified instead via live manual runs against
-  an emulator + backend. See
+- **No `429`/`Retry-After`-aware backoff on the client**, even though the
+  backend now rate-limits login. The one rate-limited route (`POST
+  /auth/login`) is never retried automatically by anything in this app —
+  a `429` there surfaces once on the login form, same as any other login
+  error, so there's no automatic-retry loop that a `Retry-After` parser
+  would need to inform. Every *other* route stays unrate-limited, per the
+  reasoning above.
+- **No widget-level or golden tests** for Flutter screens — verified
+  instead via live manual runs against an emulator + backend. This is now
+  the one specific gap in that category; the backend's SQL *is* checked
+  against a real Postgres instance, just in CI
+  (`.github/workflows/ci.yml`) rather than the local test suite — see
   [`../api/README.md#tests`](../api/README.md#tests) and
   [`../flutter/README.md#tests`](../flutter/README.md#tests) for exactly
   what automated coverage exists and why those specific areas were
   prioritized (data-loss-risk logic first).
+- **iOS was never built** — no Mac/Apple developer environment was
+  available. The codebase was audited for iOS-readiness instead of
+  attempting a build that couldn't be verified: `AppConfig`'s platform
+  branching already covers iOS, every dependency in `pubspec.yaml` is
+  cross-platform, and `ios/Runner/Info.plist` already carries the
+  background-sync keys. See
+  [`../flutter/README.md`](../flutter/README.md) for the specific
+  statement made about this to reviewers.

@@ -17,10 +17,10 @@ async function placeOrder(req, res) {
         return res.status(201).json(result);
 
     } catch (err) {
-        console.error("Checkout Error:", err);
+        req.log?.error({ err }, "Checkout error");
 
-        if (err.statusCode === 400) {
-            return res.status(400).json({
+        if (err.statusCode) {
+            return res.status(err.statusCode).json({
                 error: err.message,
             });
         }
@@ -46,8 +46,29 @@ async function listOrders(req, res) {
         const orders = await orderModel.findByUser(userId);
         res.status(200).json(orders);
     } catch (err) {
+        req.log?.error({ err }, "Fetch orders error");
         res.status(500).json({ error: 'Failed to fetch orders' });
     }
 }
 
-module.exports = { placeOrder, listOrders };
+/**
+ * Ownership is enforced in the model's own query (scoped to
+ * user_id = req.auth.userId), not a separate check here — same pattern as
+ * cart.model.js's updateQuantity/deleteItem.
+ */
+async function cancelOrder(req, res) {
+    try {
+        const order = await orderModel.cancelOrder(req.params.id, req.auth.userId);
+        return res.status(200).json(order);
+    } catch (err) {
+        req.log?.error({ err }, "Cancel order error");
+
+        if (err.statusCode) {
+            return res.status(err.statusCode).json({ error: err.message });
+        }
+
+        return res.status(500).json({ error: "Failed to cancel order" });
+    }
+}
+
+module.exports = { placeOrder, listOrders, cancelOrder };

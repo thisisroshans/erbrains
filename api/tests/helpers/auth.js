@@ -1,11 +1,11 @@
-// Builds the same base64url token shape auth.routes.js issues, so tests
-// can exercise routes now that requireAuth guards everything except
-// /auth/login and the public product GETs.
+// Issues a real, signed JWT the same way utils/jwt.js does, so tests
+// exercise the actual verification path in middleware/auth.js instead of
+// a hand-rolled stand-in.
+
+const { signToken } = require("../../utils/jwt");
 
 function makeToken(userId, email = "user@example.com") {
-    return Buffer
-        .from(JSON.stringify({ userId, email, issuedAt: Date.now() }))
-        .toString("base64url");
+    return signToken({ userId, email });
 }
 
 function authHeader(userId, email) {

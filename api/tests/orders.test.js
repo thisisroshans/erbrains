@@ -97,6 +97,112 @@ describe("POST /orders", () => {
 
         expect(res.status).toBe(500);
     });
+
+    it("locks product rows with FOR UPDATE while checking cart stock", async () => {
+        const clientQuery = useTransaction(async (sql) => {
+            if (sql.includes("FROM cart_items")) {
+                return { rows: [{ product_id: "prod-1", quantity: 1, price: "9.99", stock: 5, name: "Widget" }] };
+            }
+            if (sql.includes("INSERT INTO orders")) return { rows: [{ id: "order-1" }] };
+            return { rows: [] };
+        });
+
+        await request(app).post("/orders").set("Authorization", authHeader("user-1")).send({ userId: "user-1" });
+
+        const cartQuery = clientQuery.mock.calls.map(([sql]) => sql).find((sql) => sql.includes("FROM cart_items"));
+        expect(cartQuery).toMatch(/FOR UPDATE OF p/);
+    });
+
+    it("rejects checkout with 409 when a cart item exceeds available stock", async () => {
+        useTransaction(async (sql) => {
+            if (sql.includes("FROM cart_items")) {
+                return {
+                    rows: [{ product_id: "prod-1", quantity: 5, price: "9.99", stock: 2, name: "Widget" }],
+                };
+            }
+            return { rows: [] };
+        });
+
+        const res = await request(app)
+            .post("/orders")
+            .set("Authorization", authHeader("user-1"))
+            .send({ userId: "user-1" });
+
+        expect(res.status).toBe(409);
+        expect(res.body.error).toMatch(/Widget/);
+    });
+
+    it("decrements product stock for each line item on a successful checkout", async () => {
+        const clientQuery = useTransaction(async (sql) => {
+            if (sql.includes("FROM cart_items")) {
+                return { rows: [{ product_id: "prod-1", quantity: 2, price: "9.99", stock: 10, name: "Widget" }] };
+            }
+            if (sql.includes("INSERT INTO orders")) return { rows: [{ id: "order-1" }] };
+            return { rows: [] };
+        });
+
+        await request(app).post("/orders").set("Authorization", authHeader("user-1")).send({ userId: "user-1" });
+
+        const stockUpdate = clientQuery.mock.calls.find(
+            ([sql]) => sql.includes("UPDATE products") && sql.includes("stock = stock - ")
+        );
+        expect(stockUpdate).toBeDefined();
+        expect(stockUpdate[1]).toEqual([2, "prod-1"]);
+    });
+});
+
+describe("POST /orders/:id/cancel", () => {
+    beforeEach(() => {
+        jest.resetAllMocks();
+    });
+
+    it("returns 404 when the order doesn't exist or isn't owned by the caller", async () => {
+        useTransaction(async () => ({ rows: [] }));
+
+        const res = await request(app)
+            .post("/orders/order-1/cancel")
+            .set("Authorization", authHeader("user-1"));
+
+        expect(res.status).toBe(404);
+    });
+
+    it("returns 409 when the order is already cancelled", async () => {
+        useTransaction(async (sql) => {
+            if (sql.includes("SELECT id, status")) return { rows: [{ id: "order-1", status: "cancelled" }] };
+            return { rows: [] };
+        });
+
+        const res = await request(app)
+            .post("/orders/order-1/cancel")
+            .set("Authorization", authHeader("user-1"));
+
+        expect(res.status).toBe(409);
+    });
+
+    it("restores stock for every line item and marks the order cancelled", async () => {
+        const clientQuery = useTransaction(async (sql) => {
+            if (sql.includes("SELECT id, status")) return { rows: [{ id: "order-1", status: "completed" }] };
+            if (sql.includes("SELECT product_id, quantity FROM order_items")) {
+                return { rows: [{ product_id: "prod-1", quantity: 3 }] };
+            }
+            if (sql.includes("UPDATE orders SET status = 'cancelled'")) {
+                return { rows: [{ id: "order-1", status: "cancelled" }] };
+            }
+            return { rows: [] };
+        });
+
+        const res = await request(app)
+            .post("/orders/order-1/cancel")
+            .set("Authorization", authHeader("user-1"));
+
+        expect(res.status).toBe(200);
+        expect(res.body.status).toBe("cancelled");
+
+        const stockRestore = clientQuery.mock.calls.find(
+            ([sql]) => sql.includes("UPDATE products") && sql.includes("stock = stock + ")
+        );
+        expect(stockRestore[1]).toEqual([3, "prod-1"]);
+    });
 });
 
 describe("GET /orders", () => {

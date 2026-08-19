@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+    services:
+      # A real ephemeral Postgres — the backend's own test suite runs
+      # against a mocked db module (see api/README.md#tests), so this is
+      # the one place schema.sql + database/migrations/*.sql actually get
+      # applied against a real database and checked for syntax errors.
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: wearable_health_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DB_USER: postgres
+      DB_HOST: localhost
+      DB_NAME: wearable_health_db
+      DB_PASSWORD: postgres
+      DB_PORT: 5432
+      JWT_SECRET: ci-only-secret-not-for-production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - name: Apply schema + migrations against a real Postgres
+        run: npm run db:migrate
+      - name: Seed against a real Postgres
+        run: npm run db:seed
+
+  flutter:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: flutter
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter pub get
+      - run: dart run build_runner build --delete-conflicting-outputs
+      - run: flutter analyze
+      - run: flutter test
+      # Also catches native-Android breakage from a plugin dependency
+      # (e.g. workmanager) that `flutter analyze`/`flutter test` alone
+      # wouldn't — same check used locally when workmanager was added.
+      - run: flutter build apk --debug

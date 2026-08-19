@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:fitring/core/cart_sync/cart_sync_manager.dart';
 import 'package:fitring/core/cart_sync/cart_sync_store.dart';
+import 'package:fitring/core/data/datasources/remote/api_exception.dart';
 import 'package:fitring/core/domain/entities/cart_mutation.dart';
 import 'package:fitring/core/offline/hive_boxes.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -244,6 +245,45 @@ void main() {
     now = now.add(const Duration(seconds: 30));
     await manager.drain();
     expect(attemptCalls, 3); // failed mutations aren't retried automatically
+  });
+
+  group('isRetryable classification', () {
+    test('a 409 stock conflict on placeOrder fails immediately, skipping the attempt budget', () async {
+      final store = CartSyncStore();
+      await store.enqueue(placeOrderMutation('order1'));
+
+      var placeOrderCalls = 0;
+      final manager = buildManager(
+        store,
+        placeOrder: () async {
+          placeOrderCalls++;
+          throw const ApiException('Insufficient stock for: Widget', statusCode: 409);
+        },
+        maxAttempts: 5,
+      );
+
+      await manager.drain();
+
+      expect(placeOrderCalls, 1);
+      expect(store.pendingCount(), 0);
+      expect(store.failedCount(), 1);
+    });
+
+    test('a 5xx failure on placeOrder still uses the normal backoff/retry path', () async {
+      final store = CartSyncStore();
+      await store.enqueue(placeOrderMutation('order1'));
+
+      final manager = buildManager(
+        store,
+        placeOrder: () async => throw const ApiException('Server error', statusCode: 500),
+        maxAttempts: 5,
+      );
+
+      await manager.drain();
+
+      expect(store.pendingCount(), 1);
+      expect(store.failedCount(), 0);
+    });
   });
 
   test('retryFailed resets attempts and syncs on success', () async {

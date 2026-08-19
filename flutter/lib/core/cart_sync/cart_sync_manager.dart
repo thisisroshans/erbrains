@@ -1,3 +1,4 @@
+import '../data/datasources/remote/api_exception.dart';
 import '../domain/entities/cart_mutation.dart';
 import 'cart_sync_store.dart';
 
@@ -94,10 +95,19 @@ class CartSyncManager {
           await store.markApplied(mutation.localId);
           appliedAny = true;
           _nextAttemptAt = null;
-        } catch (_) {
-          await store.recordFailedAttempt(mutation.localId, maxAttempts: maxAttempts);
-          if (appliedAny) await refreshBaseline();
-          _scheduleRetry(mutation.attempts + 1);
+        } catch (e) {
+          if (e is ApiException && !e.isRetryable) {
+            // A business rejection (e.g. 409 insufficient stock) won't fix
+            // itself on retry — surface it immediately via the failed
+            // state instead of spending the attempt budget on it.
+            await store.markFailedImmediately(mutation.localId);
+            if (appliedAny) await refreshBaseline();
+            _nextAttemptAt = null;
+          } else {
+            await store.recordFailedAttempt(mutation.localId, maxAttempts: maxAttempts);
+            if (appliedAny) await refreshBaseline();
+            _scheduleRetry(mutation.attempts + 1);
+          }
           return;
         }
       }

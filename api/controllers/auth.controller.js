@@ -1,5 +1,6 @@
 const userModel = require("../models/user.model");
-const { hashPassword } = require("../utils/password");
+const { hashPassword, verifyPassword } = require("../utils/password");
+const { signToken } = require("../utils/jwt");
 
 /**
  * POST /auth/login
@@ -9,7 +10,7 @@ const { hashPassword } = require("../utils/password");
  * - Finds user by email
  * - Automatically creates user if not found
  * - Verifies password for existing users
- * - Returns a mock auth token
+ * - Returns a signed JWT (see utils/jwt.js)
  */
 async function login(req, res) {
     try {
@@ -31,7 +32,7 @@ async function login(req, res) {
         if (!user) {
             user = await userModel.create({
                 email: normalizedEmail,
-                passwordHash: hashPassword(password),
+                passwordHash: await hashPassword(password),
                 name: name ? String(name).trim() : null,
             });
         }
@@ -39,24 +40,13 @@ async function login(req, res) {
         // --------------------------------------------------
         // User exists -> verify password
         // --------------------------------------------------
-        else if (user.password_hash !== hashPassword(password)) {
+        else if (!(await verifyPassword(password, user.password_hash))) {
             return res.status(401).json({
                 error: "Invalid email or password",
             });
         }
 
-        // --------------------------------------------------
-        // Generate local-development auth token
-        // --------------------------------------------------
-        const tokenPayload = {
-            userId: user.id,
-            email: user.email,
-            issuedAt: Date.now(),
-        };
-
-        const token = Buffer
-            .from(JSON.stringify(tokenPayload))
-            .toString("base64url");
+        const token = signToken({ userId: user.id, email: user.email });
 
         return res.status(200).json({
             token,
@@ -68,7 +58,7 @@ async function login(req, res) {
         });
 
     } catch (error) {
-        console.error("POST /auth/login error:", error);
+        req.log?.error({ err: error }, "POST /auth/login error");
 
         return res.status(500).json({
             error: "Internal server error",
@@ -76,4 +66,19 @@ async function login(req, res) {
     }
 }
 
-module.exports = { login };
+/**
+ * POST /auth/logout
+ *
+ * The token is a stateless, self-contained JWT — there's no server-side
+ * session to destroy, so this doesn't blacklist anything. It exists for a
+ * complete REST surface (the assignment lists logout as a required auth
+ * feature) and to give the client an explicit endpoint to call; the actual
+ * security boundary is the token's own 7-day expiry, not revocation. A
+ * revocation list was considered and deliberately not built — see
+ * docs/DECISIONS.md for the trade-off.
+ */
+async function logout(req, res) {
+    return res.status(200).json({ success: true });
+}
+
+module.exports = { login, logout };

@@ -31,7 +31,7 @@ async function seedDemoUser() {
         ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name
         RETURNING id
         `,
-        [DEMO_EMAIL, hashPassword(DEMO_PASSWORD), DEMO_NAME]
+        [DEMO_EMAIL, await hashPassword(DEMO_PASSWORD), DEMO_NAME]
     );
 
     return result.rows[0].id;

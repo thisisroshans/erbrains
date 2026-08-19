@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 
 import '../../../config/app_config.dart';
@@ -32,12 +34,34 @@ class ApiClient {
           }
           handler.next(options);
         },
+        onError: (error, handler) async {
+          // Only an *authenticated* request coming back 401 means the
+          // session itself is no longer valid (expired JWT, or the
+          // server's signing secret rotated) — login's own 401 (wrong
+          // password) never had a token attached in the first place, so
+          // it's excluded here and just surfaces as a normal ApiException
+          // on the login form.
+          final hadToken = error.requestOptions.headers.containsKey('Authorization');
+          if (hadToken && error.response?.statusCode == 401) {
+            await _tokenStorage.clear();
+            _sessionExpiredController.add(null);
+          }
+          handler.next(error);
+        },
       ),
     );
   }
 
   final Dio _dio;
   final TokenStorage _tokenStorage;
+  final _sessionExpiredController = StreamController<void>.broadcast();
+
+  /// Fires once per session invalidation, after [_tokenStorage] has
+  /// already been cleared — the app (see `AuthController`) reacts by
+  /// dropping back to the login screen. `ApiClient` itself knows nothing
+  /// about navigation or Riverpod; this is the seam that keeps it that
+  /// way.
+  Stream<void> get onSessionExpired => _sessionExpiredController.stream;
 
   Future<T> _wrap<T>(Future<Response<dynamic>> Function() call, T Function(dynamic data) onSuccess) async {
     try {
@@ -163,8 +187,17 @@ class ApiClient {
   // Shopping
   // ---------------------------------------------------------------------
 
+  /// `GET /products` now returns a paginated envelope
+  /// (`{ data, page, limit, total }`), not a bare array — absorbed here so
+  /// callers keep seeing a plain product list; nothing above this needs to
+  /// know the wire shape changed. The catalog is small enough that the
+  /// client still just asks for one large page rather than paging through
+  /// multiple requests — see docs/DECISIONS.md.
   Future<List<dynamic>> getProducts() {
-    return _wrap(() => _dio.get('/products'), (data) => data as List<dynamic>);
+    return _wrap(
+      () => _dio.get('/products', queryParameters: {'limit': 100}),
+      (data) => (data as Map<String, dynamic>)['data'] as List<dynamic>,
+    );
   }
 
   Future<Map<String, dynamic>> getProduct(String id) {
@@ -225,6 +258,17 @@ class ApiClient {
     return _wrap(
       () => _dio.get('/orders', queryParameters: {'userId': userId}),
       (data) => data as List<dynamic>,
+    );
+  }
+
+  /// Restores the stock the order reserved server-side. 409 (already
+  /// cancelled) and 404 (not found/not owned) surface as a normal
+  /// [ApiException] — there's no special handling needed beyond the
+  /// message the backend already provides.
+  Future<Map<String, dynamic>> cancelOrder({required String orderId}) {
+    return _wrap(
+      () => _dio.post('/orders/$orderId/cancel'),
+      (data) => data as Map<String, dynamic>,
     );
   }
 }

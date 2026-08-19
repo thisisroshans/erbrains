@@ -11,7 +11,9 @@ describe("requireAuth middleware", () => {
     });
 
     it("lets GET /products through with no token (public route)", async () => {
-        db.query.mockResolvedValueOnce({ rows: [] });
+        db.query
+            .mockResolvedValueOnce({ rows: [] }) // page of products
+            .mockResolvedValueOnce({ rows: [{ total: 0 }] }); // count
 
         const res = await request(app).get("/products");
 

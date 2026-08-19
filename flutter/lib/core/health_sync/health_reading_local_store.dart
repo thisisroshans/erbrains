@@ -80,6 +80,19 @@ class HealthReadingLocalStore {
     }
   }
 
+  /// Skips the retry budget entirely and moves straight to
+  /// [SyncStatus.failed] — used when the failure is a non-retryable
+  /// business rejection (see `ApiException.isRetryable`), not a transient
+  /// network error. Retrying something that can never succeed would only
+  /// burn attempts for no benefit; this surfaces it immediately instead.
+  Future<void> markFailedImmediately(Iterable<String> localIds) async {
+    for (final id in localIds) {
+      final reading = _get(id);
+      if (reading == null) continue;
+      await _box.put(id, reading.copyWith(syncStatus: SyncStatus.failed).toHiveMap());
+    }
+  }
+
   /// User-initiated retry from the sync banner's failed sheet — resets
   /// every failed reading back to pending with a full attempt budget.
   Future<void> retryFailed() async {

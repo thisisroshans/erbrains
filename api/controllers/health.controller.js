@@ -108,7 +108,7 @@ async function postReadings(req, res) {
         });
 
     } catch (error) {
-        console.error("POST /health/readings error:", error);
+        req.log?.error({ err: error }, "POST /health/readings error");
 
         // Invalid user/device foreign key
         if (error.code === "23503") {
@@ -159,7 +159,7 @@ async function getReadings(req, res) {
         });
 
     } catch (err) {
-        console.error("Get Readings Error:", err);
+        req.log?.error({ err }, "Get readings error");
 
         return res.status(500).json({
             error: "Failed to fetch health history",
@@ -192,7 +192,7 @@ async function getSummary(req, res) {
         return res.status(200).json(summary);
 
     } catch (error) {
-        console.error("GET /health/summary error:", error);
+        req.log?.error({ err: error }, "GET /health/summary error");
 
         return res.status(500).json({
             error: "Failed to generate summary",

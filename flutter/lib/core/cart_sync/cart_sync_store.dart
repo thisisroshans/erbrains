@@ -78,6 +78,18 @@ class CartSyncStore {
     }
   }
 
+  /// Skips the retry budget entirely and moves straight to
+  /// [CartMutationStatus.failed] — used when the failure is a
+  /// non-retryable business rejection (see `ApiException.isRetryable`,
+  /// e.g. a 409 insufficient-stock response), not a transient network
+  /// error.
+  Future<void> markFailedImmediately(String localId) async {
+    final raw = _box.get(localId);
+    if (raw == null) return;
+    final mutation = CartMutation.fromHiveMap(raw as Map<dynamic, dynamic>);
+    await _box.put(localId, mutation.copyWith(status: CartMutationStatus.failed).toHiveMap());
+  }
+
   Future<void> retryFailed() async {
     for (final mutation in _allMutations()) {
       if (mutation.status != CartMutationStatus.failed) continue;

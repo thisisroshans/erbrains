@@ -48,9 +48,16 @@ flutter run
 ```
 
 Demo login (seeded by the backend): `demo@erbrains.io` / `password123`.
+The backend needs a `JWT_SECRET` set (`api/.env.example` has the full
+variable list) — `npm install` doesn't fail without one, but the server
+throws on first request if it's missing.
+
+Interactive API docs (Swagger UI) are served at `http://localhost:3000/docs`
+once the backend is running — a second way to explore the API beyond the
+Postman collection.
 
 - [`api/README.md`](api/README.md) — backend setup, env vars, running tests
-- [`flutter/README.md`](flutter/README.md) — client setup, running tests
+- [`flutter/README.md`](flutter/README.md) — client setup, running tests, platform notes (Android verified, iOS not built — see why)
 
 ## Documentation
 
@@ -72,8 +79,15 @@ reasoning behind every non-obvious technical decision — lives in
 ## Testing
 
 ```bash
-cd api && npm test          # 33 tests — routing/business logic against a mocked db
-cd flutter && flutter test  # 7 tests — offline sync engine correctness against fakes
+cd api && npm test          # 55 tests — routing/business logic against a mocked db
+cd flutter && flutter test  # 33 tests — offline sync engine correctness against fakes
 ```
+
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs both
+suites on every push, plus `flutter analyze`, `flutter build apk --debug`,
+and — the one thing neither test suite does — applies `schema.sql` and
+`database/migrations/*.sql` against a real, ephemeral Postgres service
+container, so a schema syntax error can't hide behind the backend's
+mocked-`db` unit tests.
 
 See each README's Tests section for what's covered and what deliberately isn't.

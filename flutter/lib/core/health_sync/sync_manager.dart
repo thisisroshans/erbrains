@@ -1,3 +1,4 @@
+import '../data/datasources/remote/api_exception.dart';
 import '../domain/entities/health_reading.dart';
 import 'health_reading_local_store.dart';
 
@@ -92,15 +93,21 @@ class SyncManager {
             await store.markSynced(batch.map((r) => r.localId));
           }
           _nextAttemptAt = null;
-        } catch (_) {
-          await store.recordFailedAttempt(
-            batch.map((r) => r.localId),
-            maxAttempts: maxAttempts,
-          );
-          final worstAttempts = batch
-              .map((r) => r.attempts + 1)
-              .reduce((a, b) => a > b ? a : b);
-          _scheduleRetry(worstAttempts);
+        } catch (e) {
+          final localIds = batch.map((r) => r.localId);
+          if (e is ApiException && !e.isRetryable) {
+            // A business rejection (e.g. an invalid userId/deviceId foreign
+            // key) won't fix itself on retry — surface it immediately
+            // instead of spending the attempt budget on it.
+            await store.markFailedImmediately(localIds);
+            _nextAttemptAt = null;
+          } else {
+            await store.recordFailedAttempt(localIds, maxAttempts: maxAttempts);
+            final worstAttempts = batch
+                .map((r) => r.attempts + 1)
+                .reduce((a, b) => a > b ? a : b);
+            _scheduleRetry(worstAttempts);
+          }
           return;
         }
       }

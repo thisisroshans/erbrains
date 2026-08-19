@@ -22,6 +22,7 @@ async function addItem(req, res) {
         const item = await cartModel.upsertItem({ userId, productId, quantity });
         res.status(201).json(item);
     } catch (err) {
+        req.log?.error({ err }, "Add to cart error");
         res.status(500).json({ error: 'Failed to update cart' });
     }
 }
@@ -42,6 +43,7 @@ async function getCart(req, res) {
         const totalAmount = items.reduce((sum, item) => sum + parseFloat(item.subtotal), 0);
         res.status(200).json({ items, totalAmount });
     } catch (err) {
+        req.log?.error({ err }, "Fetch cart error");
         res.status(500).json({ error: 'Failed to fetch cart' });
     }
 }
@@ -71,6 +73,7 @@ async function updateItem(req, res) {
 
         res.status(200).json(item);
     } catch (err) {
+        req.log?.error({ err }, "Update cart item error");
         res.status(500).json({ error: 'Failed to update cart item' });
     }
 }
@@ -88,6 +91,7 @@ async function removeItem(req, res) {
 
         res.status(204).send();
     } catch (err) {
+        req.log?.error({ err }, "Remove cart item error");
         res.status(500).json({ error: 'Failed to remove cart item' });
     }
 }

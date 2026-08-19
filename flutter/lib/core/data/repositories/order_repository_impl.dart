@@ -17,4 +17,9 @@ class OrderRepositoryImpl implements OrderRepository {
     final rows = await _api.getOrders(userId: userId);
     return rows.map((e) => Order.fromJson(e as Map<String, dynamic>)).toList();
   }
+
+  @override
+  Future<void> cancel(String orderId) {
+    return _api.cancelOrder(orderId: orderId);
+  }
 }

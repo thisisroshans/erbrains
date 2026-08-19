@@ -7,7 +7,7 @@ flowchart TB
     Screens["Flutter screens\nDashboard, History, Connection, ..."]
     Iface["WearableService (abstract interface)\nlib/core/wearable/wearable_service.dart"]
     Mock["MockWearableService\nlib/core/wearable/mock_wearable_service.dart"]
-    Real["BleWearableService (not yet built)\nplatform channel -> native BLE SDK"]
+    Real["BleWearableService (stub, not wired in)\nlib/core/wearable/ble_wearable_service.dart\nplatform channel -> native BLE SDK"]
 
     Screens --> Iface
     Iface -.implemented by.-> Mock
@@ -25,14 +25,29 @@ Nothing in `lib/features/` imports `MockWearableService` directly.
 Recommended path: **Flutter Platform Channels over a real vendor plugin**,
 not raw platform channels hand-rolled per-project.
 
-- Write `BleWearableService implements WearableService` in Dart. It talks
-  to a platform channel (`MethodChannel` for commands, `EventChannel` for
-  the reading/connection-state streams) instead of a `Timer`.
+`lib/core/wearable/ble_wearable_service.dart` already exists as a
+**stub** — `class BleWearableService implements WearableService`, with the
+real platform channel names and method shapes declared, but every method
+body throws `UnimplementedError`. It's not wired into
+`wearableServiceProvider`, so the app still runs on the mock; the point of
+building the stub rather than just describing this in prose is to make the
+seam concrete and compileable. Finishing it for real means:
+
+- Deleting the `UnimplementedError` throws and implementing the native
+  side: `MethodChannel` for commands (`connect`/`disconnect`/`reconnect`),
+  `EventChannel` for the three streams (connection state, readings,
+  reconnect status) — instead of a `Timer`.
 - **Android**: Kotlin, using the vendor's BLE SDK (or `flutter_blue_plus`
   if the device exposes a standard BLE GATT profile rather than a
   proprietary SDK) inside the platform channel's method/event handlers.
 - **iOS**: Swift + CoreBluetooth (or the vendor's iOS SDK), same channel
   contract.
+- Registering the runtime permissions a real BLE integration needs, which
+  the mock never required and so don't exist anywhere in this app today:
+  `BLUETOOTH_SCAN` / `BLUETOOTH_CONNECT` (Android 12 / API 31+;
+  `ACCESS_FINE_LOCATION` on older versions BLE scanning still implicitly
+  needs), and `NSBluetoothAlwaysUsageDescription` in
+  `ios/Runner/Info.plist`.
 - Swap `MockWearableService()` for `BleWearableService()` at the single
   provider that constructs it (`wearableServiceProvider` in
   `flutter/lib/core/providers/wearable_providers.dart`) — zero screen

@@ -39,7 +39,32 @@ A physical device needs the host machine's real LAN IP — override with
 
 Demo login (seeded by the backend): **`demo@erbrains.io` / `password123`**.
 Login also auto-creates any other email/password on first use — the backend
-upserts (see `api/auth.routes.js`) — so any credentials work.
+upserts (see `api/auth.routes.js`) — so any credentials work. If you seeded
+the database before the backend's auth was upgraded to real bcrypt/JWT, the
+old demo password hash won't verify — see
+[`../api/README.md#setup`](../api/README.md#setup) for the one-line fix.
+
+## Platform notes (Android / iOS)
+
+**Android** is the platform this app was actually built and run against —
+debug APK builds, `flutter analyze`/`flutter test`, and CI
+(`../.github/workflows/ci.yml`) all cover it directly.
+
+**iOS was not built.** No Mac / Apple developer environment was available
+in the environment this was developed in. Rather than leave that as a
+silent gap, here's what was actually checked: `AppConfig`'s platform
+branching (`lib/core/config/app_config.dart`) already covers iOS
+correctly (falls through to `localhost:3000`, matching how the iOS
+simulator reaches the host machine); every dependency in `pubspec.yaml`
+(`dio`, `flutter_riverpod`, `hive`, `connectivity_plus`,
+`shared_preferences`, `workmanager`, `google_fonts`, `phosphor_flutter`,
+`uuid`, `intl`) is genuinely cross-platform, nothing Android-only snuck
+in; and `ios/Runner/Info.plist` already carries the background-sync
+`UIBackgroundModes`/`BGTaskSchedulerPermittedIdentifiers` keys the
+`workmanager` integration needs. The `ios/` project itself is the
+standard `flutter create` scaffold. In short: nothing found blocks an iOS
+build architecturally, but "nothing found" is not the same claim as "it
+builds and runs" — that still needs an actual Mac to confirm.
 
 ## Tests
 
@@ -47,21 +72,27 @@ upserts (see `api/auth.routes.js`) — so any credentials work.
 flutter test
 ```
 
-Three suites (28 tests total), all against fakes — no live device or
+Three suites (33 tests total), all against fakes — no live device or
 network required for any of them:
 
-- **`test/health_sync_manager_test.dart`** (11 tests) — the reading
+- **`test/health_sync_manager_test.dart`** (14 tests) — the reading
   queue's correctness-critical logic: device-registration gating before
   any reading syncs, per-reading attempt counting, the pending→failed
   transition at `maxAttempts`, backoff actually blocking a too-soon
   automatic retry, `retryFailed` restoring a full attempt budget,
-  per-reading duplicate reconciliation, and the staleness-eviction sweep.
-- **`test/cart_sync_manager_test.dart`** (10 tests) — the cart/order
+  per-reading duplicate reconciliation, the staleness-eviction sweep, and
+  the `isRetryable` classification (a non-retryable `ApiException` fails
+  immediately, skipping the attempt budget; a retryable one still backs
+  off normally).
+- **`test/cart_sync_manager_test.dart`** (12 tests) — the cart/order
   queue's equivalent: local→real cart-item-id rewriting for a dependent
   mutation, `placeOrder` gating behind every prior cart edit (including
   staying queued when an earlier mutation fails, not just when it
-  succeeds), `refreshBaseline` running once after a full drain, and the
-  same retry/backoff/failed-transition coverage as the reading queue.
+  succeeds), `refreshBaseline` running once after a full drain, the same
+  retry/backoff/failed-transition coverage as the reading queue, and the
+  same `isRetryable` classification — a queued `placeOrder` that hits a
+  `409` (insufficient stock) fails immediately rather than retrying a
+  rejection that can't become true later.
 - **`test/effective_cart_test.dart`** (7 tests) — the pure function that
   projects the mutation queue onto the last-known server cart for
   display, including the upsert-matching "add to an existing line
@@ -72,8 +103,8 @@ a cart/order, so it's the piece that's unit-tested — matching the
 assignment's own guidance to focus tests where "incorrect behavior could
 cause data loss."
 
-Backend logic (auth, cart upserts, order transactions, duplicate
-prevention) is tested in `../api/tests/` (33 tests) — see
+Backend logic (auth, cart upserts, stock validation, order transactions,
+duplicate prevention) is tested in `../api/tests/` (55 tests) — see
 [`../api/README.md#tests`](../api/README.md#tests).
 
 **Not covered by automated tests today:** widget-level tests for the
@@ -99,10 +130,29 @@ currently only has manual verification behind it.
 Summary table in [`../docs/ARCHITECTURE.md#error-handling`](../docs/ARCHITECTURE.md#error-handling).
 In short: `ApiClient` wraps every Dio error into a typed `ApiException`
 carrying the backend's own message, so no raw Dio/network exception ever
-reaches a screen; reads fall back to local Hive data where one exists
-(History always, Products cache-first with a grace window, Cart to its
-last-known baseline). Health readings and cart/order writes both queue
-for later sync rather than failing outright — see
-[`../docs/OFFLINE_SYNC.md`](../docs/OFFLINE_SYNC.md) — with a queued
-`placeOrder` specifically surfaced to the user as "queued," never as a
-silent success.
+reaches a screen. A 401 on an *authenticated* request (the JWT expired, or
+the server's secret rotated) is distinguished from a login-form 401 (wrong
+password) and triggers a global session-expiry event, dropping the app
+back to Login and wiping local data — see
+[`../docs/API.md`](../docs/API.md#client-consumption-flutter). Reads fall
+back to local Hive data where one exists (History always, Products
+cache-first with a grace window, Cart to its last-known baseline). Health
+readings and cart/order writes both queue for later sync rather than
+failing outright — see [`../docs/OFFLINE_SYNC.md`](../docs/OFFLINE_SYNC.md)
+— with a queued `placeOrder` specifically surfaced to the user as
+"queued," never as a silent success, and a non-retryable rejection (e.g.
+insufficient stock) surfaced immediately rather than retried.
+
+## Known gap: no light/system theme
+
+The app renders dark-only (`themeMode: ThemeMode.dark` in `app.dart`),
+regardless of the device's system setting. This was investigated, not
+overlooked: `NocturneColors` (`lib/design_system/nocturne_colors.dart`)
+are `static const Color` values referenced directly across every screen,
+not routed through `Theme.of(context)` — so wiring `ThemeMode.system`
+alone would change nothing visually. A real light theme means re-threading
+dozens of widgets through context-aware tokens, which is a large refactor
+with real regression risk that can't be verified without a live
+emulator/device to actually look at the result. See
+[`../docs/DECISIONS.md`](../docs/DECISIONS.md#flutter) for the full
+reasoning behind deferring this rather than shipping it unverified.

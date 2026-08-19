@@ -1,27 +1,13 @@
+const { verifyToken } = require("../utils/jwt");
+
 /**
- * Verifies the opaque token issued by POST /auth/login (a base64url blob,
- * not a JWT — see auth.routes.js) and exposes the caller's identity as
- * req.auth. Every route mounted after requireAuth in app.js requires a
- * valid token; routes that also take a userId in the body/query should
- * additionally call ensureSelf so a valid token for user A can't be used
- * to read or write user B's data just by passing a different userId.
+ * Verifies the JWT issued by POST /auth/login (see utils/jwt.js) and
+ * exposes the caller's identity as req.auth. Every route mounted after
+ * requireAuth in app.js requires a valid, unexpired token; routes that
+ * also take a userId in the body/query should additionally call
+ * ensureSelf so a valid token for user A can't be used to read or write
+ * user B's data just by passing a different userId.
  */
-
-function decodeToken(token) {
-    try {
-        const json = Buffer.from(token, "base64url").toString("utf8");
-        const payload = JSON.parse(json);
-
-        if (!payload || typeof payload.userId !== "string" || typeof payload.email !== "string") {
-            return null;
-        }
-
-        return payload;
-    } catch {
-        return null;
-    }
-}
-
 function requireAuth(req, res, next) {
     const header = req.headers.authorization || "";
     const [scheme, token] = header.split(" ");
@@ -32,7 +18,7 @@ function requireAuth(req, res, next) {
         });
     }
 
-    const payload = decodeToken(token);
+    const payload = verifyToken(token);
 
     if (!payload) {
         return res.status(401).json({

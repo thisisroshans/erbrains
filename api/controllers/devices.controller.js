@@ -17,7 +17,7 @@ async function registerDevice(req, res) {
         return res.status(201).json(device);
 
     } catch (err) {
-        console.error("Device Registration Error:", err);
+        req.log?.error({ err }, "Device registration error");
 
         // Invalid userId foreign key
         if (err.code === "23503") {
@@ -48,7 +48,7 @@ async function listDevices(req, res) {
         return res.status(200).json(devices);
 
     } catch (err) {
-        console.error("Get Devices Error:", err);
+        req.log?.error({ err }, "Get devices error");
 
         return res.status(500).json({
             error: "Failed to fetch devices",

@@ -144,5 +144,27 @@ class _OrdersProviderElement
   String get userId => (origin as OrdersProvider).userId;
 }
 
+String _$orderCancellationHash() => r'1b2432a13a0ca9f4ce703abe8c714a0f62b4a821';
+
+/// Owns the "Cancel order" action's loading flag, same shape as
+/// CheckoutSubmission — screen-local, ephemeral UI state modeled as
+/// Riverpod state rather than `setState`. Throws [ApiException] on failure
+/// (already-cancelled, not found) and lets the screen decide how to
+/// surface it.
+///
+/// Copied from [OrderCancellation].
+@ProviderFor(OrderCancellation)
+final orderCancellationProvider =
+    AutoDisposeNotifierProvider<OrderCancellation, bool>.internal(
+      OrderCancellation.new,
+      name: r'orderCancellationProvider',
+      debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+          ? null
+          : _$orderCancellationHash,
+      dependencies: null,
+      allTransitiveDependencies: null,
+    );
+
+typedef _$OrderCancellation = AutoDisposeNotifier<bool>;
 // ignore_for_file: type=lint
 // ignore_for_file: subtype_of_sealed_class, invalid_use_of_internal_member, invalid_use_of_visible_for_testing_member, deprecated_member_use_from_same_package

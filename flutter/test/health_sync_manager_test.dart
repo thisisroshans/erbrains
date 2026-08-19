@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:fitring/core/data/datasources/remote/api_exception.dart';
 import 'package:fitring/core/domain/entities/health_reading.dart';
 import 'package:fitring/core/health_sync/health_reading_local_store.dart';
 import 'package:fitring/core/health_sync/sync_manager.dart';
@@ -250,6 +251,64 @@ void main() {
       expect(store.pendingCount(), 0);
       final all = store.recent(deviceId: 'FITRING-001', limit: 10);
       expect(all.every((r) => r.syncStatus == SyncStatus.synced), isTrue);
+    });
+  });
+
+  group('isRetryable classification', () {
+    test('a non-retryable ApiException (4xx) moves straight to failed, skipping the attempt budget', () async {
+      final store = HealthReadingLocalStore();
+      await store.insert(reading('r1'));
+
+      var sendCalls = 0;
+      final manager = SyncManager(
+        store: store,
+        registerDevice: () async {},
+        sendBatch: (batch) async {
+          sendCalls++;
+          throw const ApiException('Invalid userId or deviceId', statusCode: 400);
+        },
+        maxAttempts: 5,
+      );
+
+      await manager.drain();
+
+      expect(sendCalls, 1);
+      expect(store.pendingCount(), 0);
+      expect(store.failedCount(), 1);
+    });
+
+    test('a retryable ApiException (5xx) still uses the normal backoff/retry path', () async {
+      final store = HealthReadingLocalStore();
+      await store.insert(reading('r1'));
+
+      final manager = SyncManager(
+        store: store,
+        registerDevice: () async {},
+        sendBatch: (batch) async => throw const ApiException('Server error', statusCode: 503),
+        maxAttempts: 5,
+      );
+
+      await manager.drain();
+
+      expect(store.pendingCount(), 1);
+      expect(store.failedCount(), 0);
+    });
+
+    test('a plain network error (no status code) is treated as retryable', () async {
+      final store = HealthReadingLocalStore();
+      await store.insert(reading('r1'));
+
+      final manager = SyncManager(
+        store: store,
+        registerDevice: () async {},
+        sendBatch: (batch) async => throw const ApiException('Network error'),
+        maxAttempts: 5,
+      );
+
+      await manager.drain();
+
+      expect(store.pendingCount(), 1);
+      expect(store.failedCount(), 0);
     });
   });
 
