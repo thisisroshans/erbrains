@@ -59,6 +59,26 @@ Postman collection.
 - [`api/README.md`](api/README.md) — backend setup, env vars, running tests
 - [`flutter/README.md`](flutter/README.md) — client setup, running tests, platform notes (Android verified, iOS not built — see why)
 
+## Android build
+
+A prebuilt release APK is at [`dist/FitRing.apk`](dist/FitRing.apk)
+(~51 MB) — install it directly without building from source:
+
+```bash
+adb install dist/FitRing.apk
+```
+
+It's signed with Flutter's default debug keystore (see
+`flutter/android/app/build.gradle.kts` — no real signing config exists for
+this project), so Android will treat it as an unsigned/debug app; on a
+physical device you may need to allow installs from the source you're
+using to sideload it. It points at `10.0.2.2:3000` by default (the
+emulator's alias for the host), so on a physical device pass the host's
+LAN IP at install/run time per
+[`flutter/README.md`](flutter/README.md#setup) if you're building from
+source instead — the prebuilt APK itself is baked to the emulator address
+and won't reach a backend running elsewhere without a rebuild.
+
 ## Documentation
 
 This README covers only the top-level overview. Everything else — system
