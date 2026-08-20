@@ -36,19 +36,23 @@ import '../wearable/mock_wearable_service.dart';
 /// same ceiling every app hits on these platforms — not a shortcoming
 /// specific to this implementation.
 ///
-/// **Verification note — be honest about this with reviewers.** This was
-/// verified at the level available in the environment it was built in:
-/// `flutter analyze`/`flutter test` clean, and `flutter build apk --debug`
-/// succeeds with `workmanager` linked in (confirms the native Android
-/// Gradle/Kotlin side actually compiles). It was **not** verified against
-/// a running Android emulator or device — none was available — so neither
-/// "the periodic task registers without throwing on a real device" nor
-/// "the OS actually invokes it in the background" has been directly
-/// observed, only inferred from the package compiling and its documented
-/// contract. iOS is entirely unverified — no iOS toolchain/device is
-/// available here; the Info.plist config follows the plugin's setup docs
-/// but has never been built or run. Before relying on this, run it on a
-/// real Android device/emulator at minimum.
+/// **Verification note — be honest about this with reviewers.** Confirmed
+/// end-to-end on a real Android 16 (API 36) emulator, not just compiled:
+/// `registerPeriodic()` registers a real job with Android's `JobScheduler`
+/// (visible in `adb shell dumpsys jobscheduler`); after force-stopping the
+/// app process (`ps` showed it gone), restoring connectivity, and waiting
+/// out the standby-bucket throttle window, the OS restarted the app's
+/// process on its own — with no launch, no `adb`-forced trigger, nothing
+/// in the foreground — ran this exact `_callbackDispatcher`, and WorkManager
+/// logged `Worker result SUCCESS`; the backend received the queued
+/// `POST /devices` + `POST /health/readings` calls and the reading count in
+/// the database went up accordingly. One caveat found in the process:
+/// `am force-stop` (Android's "stopped state") blocks the OS from
+/// re-invoking the job until the app is explicitly relaunched — a task-swipe
+/// or low-memory kill doesn't have this restriction, so "killed" above means
+/// the latter, not a force-stop from Settings. iOS is still entirely
+/// unverified — no iOS toolchain/device is available here; the Info.plist
+/// config follows the plugin's setup docs but has never been built or run.
 class BackgroundSync {
   BackgroundSync._();
 

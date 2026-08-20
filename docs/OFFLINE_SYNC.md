@@ -376,21 +376,24 @@ in-app triggers above categorically cannot.
   specific to this implementation.
 - Not logged in → the task no-ops immediately (`TokenStorage.readUserId()`
   returns null) rather than doing nothing silently-by-accident.
-- **Verification is limited, and it matters which claims are actually
-  backed by that verification** — see `BackgroundSync`'s own doc comment
-  for the specific breakdown, but in short: `flutter analyze`/`flutter
-  test` are clean and `flutter build apk --debug` succeeds with
-  `workmanager` linked in (the native Android/Kotlin side compiles), but
-  no Android emulator or device was available in the environment this was
-  built in, so neither "the task registers without throwing on a real
-  device" nor "the OS actually invokes it in the background" has been
-  directly observed — only inferred from the package compiling and its
-  documented contract. iOS is entirely unverified: no iOS toolchain or
+- **Verified end-to-end on a real Android 16 (API 36) emulator** — see
+  `BackgroundSync`'s own doc comment for the specific breakdown, but in
+  short: `registerPeriodic()` was confirmed to register a real job with
+  Android's `JobScheduler` (`adb shell dumpsys jobscheduler`), readings
+  were queued while the emulator's network was disabled, the app process
+  was then killed and confirmed gone (`adb shell ps`), and — with
+  connectivity restored and the app never relaunched — the OS restarted
+  the process on its own, ran `_callbackDispatcher`, and WorkManager logged
+  `Worker result SUCCESS`; the backend's request log and the readings
+  table's row count both confirmed the queued batch actually synced.
+  **One real caveat surfaced by this pass**: `am force-stop` (Android's
+  "stopped state," e.g. the user hitting Force Stop in Settings) blocks
+  the OS from re-invoking the job until the app is explicitly relaunched —
+  a task-swipe-away or a low-memory kill by the OS doesn't have this
+  restriction. "Runs while killed" above means the latter, not a
+  force-stopped app. iOS is still entirely unverified: no iOS toolchain or
   device is available; the Info.plist config follows the plugin's setup
-  docs but has never been built or run. Treat this piece as needing a
-  real-device pass before being trusted, unlike everything else on the
-  "Shipped" list above, which has either automated test coverage or was
-  exercised live.
+  docs but has never been built or run.
 
 ## Queue persistence and idempotency
 
