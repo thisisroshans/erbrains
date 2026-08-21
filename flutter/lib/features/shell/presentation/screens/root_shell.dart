@@ -33,7 +33,8 @@ class RootShell extends ConsumerStatefulWidget {
   ConsumerState<RootShell> createState() => _RootShellState();
 }
 
-class _RootShellState extends ConsumerState<RootShell> with WidgetsBindingObserver {
+class _RootShellState extends ConsumerState<RootShell>
+    with WidgetsBindingObserver {
   Timer? _periodicDrain;
   StreamSubscription<bool>? _connectivitySub;
 
@@ -45,14 +46,20 @@ class _RootShellState extends ConsumerState<RootShell> with WidgetsBindingObserv
     // cover the common cases, but a short periodic drain means readings
     // (and any queued cart/order writes) sync promptly even while the app
     // just sits open and online with no transition event to react to.
-    _periodicDrain = Timer.periodic(const Duration(seconds: 10), (_) => _drain());
+    _periodicDrain = Timer.periodic(
+      const Duration(seconds: 10),
+      (_) => _drain(),
+    );
     // HealthSyncEngine already reacts to this transition for readings
     // internally; cart/order mutations have no equivalent "engine" (they're
     // always enqueued through a screen action, not a background stream),
     // so this is the one place their reconnect-triggered drain is wired.
-    _connectivitySub = ref.read(connectivityMonitorProvider).onTransition.listen((online) {
-      if (online) _drain();
-    });
+    _connectivitySub = ref
+        .read(connectivityMonitorProvider)
+        .onTransition
+        .listen((online) {
+          if (online) _drain();
+        });
     _drain(); // covers app launch: readings/mutations left over from a killed session.
   }
 
@@ -92,11 +99,15 @@ class _RootShellState extends ConsumerState<RootShell> with WidgetsBindingObserv
 
     return Scaffold(
       backgroundColor: NocturneColors.bg,
-      body: Column(
-        children: [
-          SyncBanner(userId: widget.userId),
-          Expanded(child: IndexedStack(index: tabIndex, children: screens)),
-        ],
+      body: SafeArea(
+        child: Column(
+          children: [
+            SyncBanner(userId: widget.userId),
+            Expanded(
+              child: IndexedStack(index: tabIndex, children: screens),
+            ),
+          ],
+        ),
       ),
       bottomNavigationBar: NocturneTabBar(
         currentIndex: tabIndex,
