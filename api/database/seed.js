@@ -28,7 +28,7 @@ async function seedDemoUser() {
         `
         INSERT INTO users (email, password_hash, name)
         VALUES ($1, $2, $3)
-        ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name
+        ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name, password_hash = EXCLUDED.password_hash
         RETURNING id
         `,
         [DEMO_EMAIL, await hashPassword(DEMO_PASSWORD), DEMO_NAME]
